@@ -1,1 +1,7 @@
 .DS_Store
+
+# FITS data (too large for git)
+*.FIT
+*.fit
+*.FITS
+*.fits
