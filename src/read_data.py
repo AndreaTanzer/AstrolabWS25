@@ -24,6 +24,7 @@ def read_folder(path):
     print(f"Finished reading {len(files)} files from {path}")
     return hdrs, datas
 
+def read(directory="../data/20251104_lab/"):
     directory = os.path.abspath(os.path.expanduser(directory))
     hdrs_bias, bias = read_folder(os.path.join(directory, "Bias"))
     hdrs_flat, flats = read_folder(os.path.join(directory, "Flats"))
