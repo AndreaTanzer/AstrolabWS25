@@ -1,0 +1,1 @@
+here all other *.fit files (not bias, dark and flats)
