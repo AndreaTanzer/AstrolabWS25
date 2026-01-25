@@ -1,0 +1,87 @@
+﻿What do we need?
+* Dark frames (or darks - measures photon counts when the camera shutter is closed, no light is falling on the detector. There will be non-zero photon counts due to thermal effect which scales with exposure time → longer exposure results in higher photon counts in darks). Exposure times of darks ideally are similar to those of flats or science frames. Typically exposure times of one set of darks match flats and another set matches that of science frames. Darks are used to remove thermal noise.
+* Bias frames (or bias - is like a zero second dark. It captures pixel to pixel read-out noise/offset. If the CCD is not cooled then the dark counts will be much higher than the bias. In those cases, bias is usually not recorded.
+* Flat frames (or flats - measures photon counts when the detector is uniformly illuminated. Flats are generally short exposures. Sky flats use the sky during dusk or dawn (if due to delay stars already appear then flats can be taken by slightly shifting the FOV for every flat, so that stars are removed when flats are combined). Dome flats use a uniformly lit (with lamps) dome surface). Flats are used to correct pixel to pixel variations in counts.
+* Science frames (contains the object of interest, along with reference stars which are known to be non-variable from catalogs such as PanSTARRS, Gaia etc. Both object and reference should not have saturated counts.
+
+
+
+
+
+
+How do we reduce the data?
+1. Create master bias (if bias was recorded, otherwise skip to step 3) by median combining all bias frames (Result: one master bias)
+2. If bias was recorded, then subtract master bias from all dark frames, all flat frames and science frames (Result: a number of dark frames)
+3. Create master dark by median combining all bias-subtracted dark frames with a unique exposure time i.e create a master dark for each unique exposure time (e.g. combine all 30s exposure dark to get 30s master dark, similarly for 45s and so on)
+
+In practise: we get our master dark frame which corresponds to the exposure time of frames we did (192 sec)
+
+
+Results: one master dark frame
+
+   4. Subtract master dark at a given exposure from all flats and all science images of the same exposure
+
+In practise: corrected_image=raw_image - (exposure_image)/(192 sec) * dark_frame
+
+We do it for flat fields and we do it for science images
+
+Result: Science images corrected for dark current; flat fields corrected for dark current
+
+
+   5. Median combine dark-subtracted flats to create master flat
+
+Result: master flat field (not normalized)
+
+   6. Normalize master flat → divide the master flat by median value of the master flat (so that median value of the normalized flat becomes 1)
+
+Result: master flat field (normalized and ready to use)
+
+   7. Divide all dark-subtracted science frames by normalized master flat
+
+
+   8. All these steps should be repeated for all the passbands we observed in
+
+
+      9. science_final=science_corrected_dark_field / master_flat_field
+
+
+
+
+Final result of all these steps: science images that are ready for analysis
+
+
+
+
+Aperture photometry:
+      * Define a circular aperture around the object, the aperture should be large enough to include the object but not so large as to include significant background
+      * Define an annulus sufficiently far from the object to determine background count in the annulus. Divide this count by the area of the annulus to get the background count per unit area
+      * Count the object area and sum the counts in the object area. Subtract background count per unit area times the area of the object from object counts
+
+Master equation: Signal_corrected_backgorund = Signal - (S_circular_apert/S_annulus)*background_count_from_annulus
+
+      * Do the same aperture photometry for reference star
+
+
+         * If the density of stars around the object is high and you cannot define an area around the star to get background count then you do PSF photometry (very powerful but we do NOT do it within AstroLab)
+
+
+Photutils:
+         * Astropy.stats import sigma_clipped_stats 
+         * sigma_clipped_stats(data) gives mean, median, sigma etc for image
+         * Subtract median from data 
+         * Run source detection from photutils on the image from previous step (daostar finder), specify sigma of the image for threshold - this will return a table with x and y pixel positions of point like sources
+         * Plate solving - converting the image from pixel coordinates to sky coordinates (RA - right ascension and DEC - declination)
+         * Once the sky coordinates are available, cross match the RA and DEC of the target (e.g. of RR Lyr) with the ones from previous step to identify the location of the target on the image
+         * Use aperture photometry tool from photutils to define apertures around target and reference stars and count the flux
+         * Repeat this for every science frame 
+
+
+
+
+
+
+PSF photometry:
+         * Get PSF of stars in the FOV and fit/model them. Then calculate the area under the modeled PSF curve to get the object count. 
+
+
+Differential photometry:

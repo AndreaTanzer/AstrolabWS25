@@ -1,1 +1,1 @@
-here all *.flat.fit* files
+here *.flat.fit* files
