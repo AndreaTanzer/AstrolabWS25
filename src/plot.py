@@ -77,7 +77,7 @@ def imshow(data, **kwargs):
 
     '''
     fig, ax = plt.subplots()
-    im = imshow_on_ax(ax, **kwargs)
+    im = imshow_on_ax(ax, data, **kwargs)
     im_ratio = data.shape[0]/data.shape[1]
     fig.colorbar(im, fraction=0.047*im_ratio)
     plt.show()

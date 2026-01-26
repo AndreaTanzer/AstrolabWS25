@@ -1,1 +1,15 @@
-conda create -n astrolab python=3.12 astropy=7.2 numpy matplotlib 
+Setup environment:
+conda create -n astrolab python=3.12 spyder-kernels=3.0 matplotlib
+conda activate astrolab
+conda install astropy=7
+
+Install git desktop, sign in, clone repository with url
+https://github.com/AndreaTanzer/AstrolabWS25.git
+Then fetch origin
+
+Move downloaded data to corresponding folders, see readme files
+
+In spyder app
+Change folder on upper right to cloned folder
+Open .py files
+Run code (hopefully)
