@@ -28,3 +28,10 @@ reduce_data.reduce_all(scis, mbias, mdark_rate, mflat, directory, plotting=True)
 #                        new_object_name="HAT-P-32", force_reduction=True)
 
 sci_reduced = io_data.read_folder(directory+"/Reduced")
+
+#example usage
+sci_reduced.unique('exposure')
+sci_reduced.unique('filter')
+sci_reduced.filter(filter='r')
+img = sci_reduced[0].load()
+plot.imshow(img)
