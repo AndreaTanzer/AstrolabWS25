@@ -10,6 +10,7 @@ import glob
 import numpy as np
 from astropy.io import fits
 from timeit import default_timer
+from pathlib import Path
 
 # from helper import ScienceFrame, ScienceFrameList, CalibFrame, CalibFrameList
 import helper
@@ -53,7 +54,7 @@ def read_folder(path, sci_frame=True):
     print(f"Finished reading {len(files)} files from {path_end} in {dt:.2f} s")
     return frames
 
-def read(directory="../data/20251104_lab/"):
+def read(directory):
     '''
     Read header of Science, Bias, Dark and Flats folders.
     Store them in ScienceFrameList or CalibFrameList
@@ -71,16 +72,22 @@ def read(directory="../data/20251104_lab/"):
         contains bias, dark and flat hdus.
 
     '''
+
     directory = os.path.abspath(os.path.expanduser(directory))
     bias = read_folder(os.path.join(directory, "Bias"), sci_frame=False)
     dark = read_folder(os.path.join(directory, "Dark"), sci_frame=False)
     flat = read_folder(os.path.join(directory, "Flats"), sci_frame=False)
     sci = read_folder(os.path.join(directory, "Science"))
     
+    print("directory:",  directory)
+
     calibration = {"bias": bias, "dark": dark, "flat": flat}
     nx = sci.unique("NAXIS1")
     ny = sci.unique("NAXIS2")
+    print("nx:", nx)
+    print("ny:", ny)
     assert len(nx) == 1 and len(ny) == 1
+
     nx_sci = nx[0]
     ny_sci = ny[0]
     for key in calibration:
@@ -130,11 +137,14 @@ def write_reduced_frame(reduced, header, path, new_object_name):
     hdu.writeto(path, overwrite=True)
     return
 
+def get_repo_root(base_dir: Path | None = None) -> Path:
+    return base_dir or Path(__file__).resolve().parents[1]
 
 if __name__ == "__main__":
-    directory = "../data/20260114_lab/"
+    directory = get_repo_root() / "data/20260114_lab/"
+
     # hdrs_bias, bias = read_folder(directory+"Bias/", sci_frame=False)
     # hdrs_flats, flats = read_folder(directory+"Flats/", sci_frame=False)
-    # hdrs, datas = read_folder(directory+"Science/")
+    # hdrs, datas = read_folder(directory+"Science/")a
     sci, hdus = read(directory)
     pass

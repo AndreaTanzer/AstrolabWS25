@@ -5,3 +5,5 @@
 *.fit
 *.FITS
 *.fits
+*.pyc
+.vscode/settings.json

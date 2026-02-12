@@ -5,14 +5,9 @@ Created on Sat Jan 24 15:46:11 2026
 @author: chris
 """
 
-import os
-import numpy as np
 from matplotlib.pyplot import close
-
 import io_data
 import reduce_data
-import plot
-from helper import functimer
 
 
 #example usage
@@ -24,7 +19,7 @@ from helper import functimer
 # plot.imshow(img)
 
 def data_reduction(indir, rename_HAT=False, **reduce_all_kwargs):
-    scis, calibration = io_data.read(directory)
+    scis, calibration = io_data.read(indir)
     mbias, mdark_rate, mflat = reduce_data.create_master_frames(calibration)
     if rename_HAT is True:
         name_HAT = "HAT-P-32"
@@ -36,8 +31,9 @@ def data_reduction(indir, rename_HAT=False, **reduce_all_kwargs):
 
 
 close("all")
-directory="../data/20251104_lab"
-# directory="../data/20260114_lab"
+repo_root = io_data.get_repo_root()
+directory = repo_root / "data" / "20251104_lab"
+print("Using data directory:", directory)
 data_reduction(directory, plotting=True)
 
 sci_reduced = io_data.read_folder(directory+"/Reduced")
