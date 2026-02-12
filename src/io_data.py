@@ -15,7 +15,7 @@ from timeit import default_timer
 import helper
 
 
-def read_folder(path, sci_frame=False):
+def read_folder(path, sci_frame=True):
     '''
     Outputs a list of all hdus in folder given by path.
 
@@ -72,10 +72,10 @@ def read(directory="../data/20251104_lab/"):
 
     '''
     directory = os.path.abspath(os.path.expanduser(directory))
-    bias = read_folder(os.path.join(directory, "Bias"))
-    dark = read_folder(os.path.join(directory, "Dark"))
-    flat = read_folder(os.path.join(directory, "Flats"))
-    sci = read_folder(os.path.join(directory, "Science"), sci_frame=True)
+    bias = read_folder(os.path.join(directory, "Bias"), sci_frame=False)
+    dark = read_folder(os.path.join(directory, "Dark"), sci_frame=False)
+    flat = read_folder(os.path.join(directory, "Flats"), sci_frame=False)
+    sci = read_folder(os.path.join(directory, "Science"))
     
     calibration = {"bias": bias, "dark": dark, "flat": flat}
     nx = sci.unique("NAXIS1")
@@ -133,8 +133,8 @@ def write_reduced_frame(reduced, header, path, new_object_name):
 
 if __name__ == "__main__":
     directory = "../data/20260114_lab/"
-    # hdrs_bias, bias = read_folder(directory+"Bias/")
-    # hdrs_flats, flats = read_folder(directory+"Flats/")
+    # hdrs_bias, bias = read_folder(directory+"Bias/", sci_frame=False)
+    # hdrs_flats, flats = read_folder(directory+"Flats/", sci_frame=False)
     # hdrs, datas = read_folder(directory+"Science/")
     sci, hdus = read(directory)
     pass

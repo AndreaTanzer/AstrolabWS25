@@ -7,10 +7,11 @@ Created on Sat Jan 24 15:46:56 2026
 
 import os
 import numpy as np
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import astropy.visualization as vis
 from astropy.nddata import Cutout2D
-
+from typing import Sequence, Any
     
 def imshow_on_ax(ax, data, interval=None, pos=None, size=None, title=None):
     '''
@@ -199,6 +200,217 @@ def subplots(nx, ny, funcs, plots, title=None, figsize=(4, 3), resolution=2,
     if fname is not None:
         fig.savefig(fname, dpi=100*resolution, bbox_inches="tight")
     # plt.tight_layout()
+    plt.show()
+
+def plot(data: list[Sequence[float]], 
+         title: str = None,
+         xlabel: str = None,
+         ylabel: str = None,
+         legend: list[str | None] = [None] * 5, 
+         fName: str = None,
+         # --- Advanced options ---
+         # text
+         text: Sequence[Any] | Sequence[Sequence[Any]] = None,
+         # Formatting
+         marker: list[str] = ['None'],
+         linestyle: list[str] = ['-'],
+         ncolors: int = None,
+         # Ticks and Grid
+         xdate: dict = None,
+         xticks: int | Sequence[float] = None,
+         yticks: int | Sequence[float] = None,
+         xgrid: bool = False,
+         ygrid: bool = False,
+         # Sizes
+         titleSize: int = 12,
+         labelSize: int = 10,
+         scale: Sequence[str] = ('linear', 'linear'),
+         figsize: tuple[float, float] = (8, 6),  # (4,3) for large labels
+                                                 # (8,4.5) instead of (16,9)
+         dpi: int = 100,
+         legendLoc: int = 0,
+         resolution: int = 2,
+         # errors
+         xerr: Sequence[Sequence[float] | None] = (None,),
+         yerr: Sequence[Sequence[float] | None] = (None,),
+         fillErr: Sequence[bool] = (False,),
+         errlabel: Sequence[str | None] = (None,)
+         ) -> None:
+    '''
+    Plot one or multiple data series.
+    
+    Core Parameters
+    ---------------
+    data : list of sequence of float
+        List of data arrays. The first element is used as the x-axis values.
+        All subsequent elements are plotted against the first element.
+    title : str, optional
+        Title of the plot.
+    xlabel : str, optional
+        Label of the x-axis.
+    ylabel : str, optional
+        Label of the y-axis.
+    legend : list of str or None, optional
+        Labels for the plotted data series. Length should match ``len(data) - 1``.
+        Entries may be ``None`` to omit individual legend items.
+    fName : str, optional
+        If provided, the plot is saved to this file name.
+    
+    Advanced Parameters
+    -------------------
+    text : sequence or sequence of sequences, optional
+        Text annotations. Either a single entry
+        ``[x_pos, y_pos, text]`` or a list of such entries.
+    
+    Formatting
+    ----------
+    marker : list of str, optional
+        Marker styles for the plotted data series.
+    linestyle : list of str, optional
+        Line styles for the plotted data series.
+    ncolors : int, optional
+        Number of colors to cycle through before repeating.
+    
+    Ticks and Grid
+    --------------
+    xdate : dict, optional
+        Dictionary defining date formatting for the x-axis.
+        Example: ``{"format": "%m-%d", "type": "day", "locator": {"interval": 4}}``.
+    xticks : int or sequence of float, optional
+        Tick positions for the x-axis. If a sequence is provided, the values are
+        used directly. If an integer is provided, it specifies the maximum number
+        of major ticks.
+    yticks : int or sequence of float, optional
+        Tick positions for the y-axis. If a sequence is provided, the values are
+        used directly. If an integer is provided, it specifies the maximum number
+        of major ticks.
+    xgrid : bool, optional
+        Enable grid lines along the x-axis.
+    ygrid : bool, optional
+        Enable grid lines along the y-axis.
+    
+    Sizes and Scaling
+    -----------------
+    titleSize : int, optional
+        Font size of the plot title.
+    labelSize : int, optional
+        Font size of the axis labels.
+    scale : sequence of str, optional
+        Axis scaling for x and y axes, e.g. ``('linear', 'log')``.
+    figsize : tuple of float, optional
+        Size of the figure in inches.
+    dpi : int, optional
+        Dots per inch of the figure.
+    legendLoc : int, optional
+        Location code for the legend (matplotlib convention).
+    resolution : int, optional
+        Resolution multiplier applied when saving the figure.
+    
+    Errors
+    ------
+    xerr : sequence of sequence of float or None, optional
+        x-error values for error bars. One entry per data series.
+    yerr : sequence of sequence of float or None, optional
+        y-error values for error bars. One entry per data series.
+    fillErr : sequence of bool, optional
+        If True, error regions are drawn using ``fill_between`` instead of error bars.
+    errlabel : sequence of str or None, optional
+        Labels for error bars or filled error regions.
+    
+    Returns
+    -------
+    None
+        The plot is displayed and optionally saved to disk.
+    '''
+    
+    fig, ax = plt.subplots(figsize=figsize, dpi=dpi)  # figsize=(4, 3), dpi=100
+    plt.xscale(scale[0])
+    plt.yscale(scale[1])
+    ax.set_title(
+        title, fontsize=titleSize, fontname='serif')  # 'Messung 1'
+    ax.set_xlabel(
+        xlabel, fontsize=labelSize, fontname='serif')
+    ax.set_ylabel(
+        ylabel, fontsize=labelSize, fontname='serif')
+    if xticks is not None:
+        plt.xticks(xticks)
+    if yticks is not None:
+        plt.yticks(yticks)
+    if len(data)-1 != len(legend):
+        i = 0
+        while i < len(data)-2:
+            legend.append(None)
+            i += 1
+        i = None
+    if len(marker) != len(legend):
+        marker = marker*int(len(legend)/len(marker))
+    if len(linestyle) != len(legend):
+        linestyle = linestyle * \
+            int(len(legend)/len(linestyle))
+    if len(fillErr) != len(legend):
+        fillErr = fillErr*int(len(legend)/len(fillErr))
+    cmap = plt.get_cmap('tab10')  # tab10
+    if ncolors is not None:
+        colors = [cmap(i) for i in range(ncolors)]*(len(data)//ncolors+1)
+    else:
+        colors = [cmap(i) for i in range(len(data))]
+    for i in range(len(data)-1):
+        plt.plot(data[0], data[i+1], marker=marker[i],
+                 linestyle=linestyle[i], label=legend[i])  # plotting data
+        if fillErr[i]:
+            try:
+                plt.fill_between(
+                    data[0], data[i+1]-yerr[i], data[i+1]+yerr[i], label=errlabel[i])
+            except:
+                pass
+        else:
+            try:
+                plt.errorbar(data[0], data[i+1], yerr=yerr[i],
+                             xerr=xerr[i], label=errlabel[i], ls='none')  # 1
+            except:
+                try:
+                    plt.errorbar(
+                        data[0], data[i+1], yerr=yerr[i], label=errlabel[i], ls='None')
+                except:
+                    try:
+                        plt.errorbar(
+                            data[0], data[i+1], xerr=xerr[i], label=errlabel[i], ls='None')
+                    except:
+                        pass
+    if xdate is not None:
+        if "format" in xdate:
+            ax.xaxis.set_major_formatter(mpl.dates.DateFormatter(xdate["format"]))
+        if "locator" in xdate:
+            loc_kwargs = xdate["locator"]
+            if xdate["type"] == "day":
+                ax.xaxis.set_major_locator(mpl.dates.DayLocator(**loc_kwargs))
+            if xdate["type"] == "month":
+                ax.xaxis.set_major_locator(mpl.dates.MonthLocator(**loc_kwargs))
+            if xdate["type"] == "year":
+                loc_kwargs = {"base": xdate["locator"]["interval"]}
+                ax.xaxis.set_major_locator(mpl.mdates.YearLocator(**loc_kwargs))
+        plt.gcf().autofmt_xdate()
+    if text != None:
+        try:
+            plt.figtext(
+                float(text[0]), float(text[1]), text[2])
+        except TypeError:  # more than one text
+            for line in text:
+                plt.figtext(line[0], line[1], line[2])
+    if xgrid is True and ygrid is True:
+        plt.grid()
+    elif xgrid is True:
+        plt.grid(axis='x')
+    elif ygrid is True:
+        plt.grid(axis='y')
+    # legend contains only None
+    if not legend.count(None) == len(legend):
+        # plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.2),
+        #            fancybox=True, shadow=True, ncol=2, prop={'size': 8})
+        plt.legend(loc=legendLoc)
+        # loc=0-best, loc=1-rechts oben, loc=2-links oben, loc=3-links unten,loc=4-rechts unten,loc=5-rechts,loc=6-mitte links,loc=7-mitte rechts,loc=8-unten mitte,loc=9-oben mitte,loc=10-mitte
+    if fName != None:
+        plt.savefig(fName, dpi=dpi*resolution, bbox_inches='tight')
     plt.show()
 
 def reduction(frame, reduced, color, positions, ysize, figdir):
