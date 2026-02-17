@@ -2,7 +2,7 @@ Setup environment:
 conda create -n astrolab python=3.12 spyder-kernels=3.1 matplotlib
 conda activate astrolab
 conda install astropy=7
-conda install astroquery
+conda install astroquery cv2 astroalign
 
 Install git desktop, sign in, clone repository with url
 https://github.com/AndreaTanzer/AstrolabWS25.git

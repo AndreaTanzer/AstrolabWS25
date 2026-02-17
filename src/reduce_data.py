@@ -126,11 +126,11 @@ def reduce_all(scis, mbias, mdark_rate, mflat, directory, new_object_name=None,
     os.makedirs(outdir, exist_ok=True)
     for color in scis.unique("filter"):  # iterate over filters
         frames = scis.filter(filter=color)
-        print(f"Processing filter {color}: n={len(frames)}")
+        print(f"Reducing filter {color}: n={len(frames)}")
         if plotting is True:
             reduced = reduce(frames[0], mbias, mdark_rate, mflat)
             name = os.path.basename(directory)
-            positions = helper.get_dataset(name)
+            positions = helper.get_dataset(name, "centers")
             plot.reduction(frames[0], reduced, color, positions, cutout_height, 
                            figdir="../figs")
             
@@ -146,5 +146,15 @@ def reduce_all(scis, mbias, mdark_rate, mflat, directory, new_object_name=None,
             # reduce image
             reduced = reduce(frame, mbias, mdark_rate, mflat)
             io_data.write_reduced_frame(reduced, hdr, path, new_object_name)
+    return
 
+def data_reduction(indir, rename_HAT=False, **reduce_all_kwargs):
+    scis, calibration = io_data.read(indir)
+    mbias, mdark_rate, mflat = create_master_frames(calibration)
+    if rename_HAT is True:
+        name_HAT = "HAT-P-32"
+    else: 
+        name_HAT = None
+    reduce_all(scis, mbias, mdark_rate, mflat, indir, 
+               new_object_name=name_HAT, **reduce_all_kwargs)
     return

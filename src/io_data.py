@@ -16,13 +16,13 @@ from pathlib import Path
 import helper
 
 
-def read_folder(path, sci_frame=True):
+def read_folder(directory, sci_frame=True):
     '''
     Outputs a list of all hdus in folder given by path.
 
     Parameters
     ----------
-    path : str
+    directory : str
         Path to folder with data relative to file.
     sci_frame : bool, optional
         If true, only read the hdr files, not the data. Stored in ScienceFrame.
@@ -34,13 +34,12 @@ def read_folder(path, sci_frame=True):
     hdus : list
         list of hdu or list of ScienceFrame (if sci_frame=True).
     '''
-    starttime = default_timer()
-    
+    directory = os.path.abspath(os.path.expanduser(directory))
     if sci_frame is True:
         frames = helper.ScienceFrameList()
     else:
         frames = helper.CalibFrameList()
-    files = glob.glob(os.path.join(path, "*.[Ff][Ii][Tt]*"))
+    files = glob.glob(os.path.join(directory, "*.[Ff][Ii][Tt]*"))
     for fname in files:
         with fits.open(fname) as hdul:
             header = hdul[0].header.copy()
@@ -48,10 +47,6 @@ def read_folder(path, sci_frame=True):
             frames.append(helper.ScienceFrame(fname, header))
         else:
             frames.append(helper.CalibFrame(fname, header))
-    
-    dt = default_timer() - starttime
-    path_end = "\\".join(path.split(sep="\\")[-2:])
-    print(f"Finished reading {len(files)} files from {path_end} in {dt:.2f} s")
     return frames
 
 def read(directory):
@@ -86,6 +81,7 @@ def read(directory):
     ny = sci.unique("NAXIS2")
     print("nx:", nx)
     print("ny:", ny)
+    print(f"(nx, ny)=({nx}, {ny})")
     assert len(nx) == 1 and len(ny) == 1
 
     nx_sci = nx[0]
@@ -136,6 +132,11 @@ def write_reduced_frame(reduced, header, path, new_object_name):
                           do_not_scale_image_data=True)
     hdu.writeto(path, overwrite=True)
     return
+
+def write_solved_frame(frame, new_wcs, path):
+    header = frame.header.copy()
+    header.update(new_wcs.to_header())
+    fits.writeto(path, frame.load(), header, overwrite=True)
 
 def get_repo_root(base_dir: Path | None = None) -> Path:
     return base_dir or Path(__file__).resolve().parents[1]

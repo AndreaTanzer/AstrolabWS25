@@ -13,7 +13,8 @@ import astropy.visualization as vis
 from astropy.nddata import Cutout2D
 from typing import Sequence, Any
     
-def imshow_on_ax(ax, data, interval=None, pos=None, size=None, title=None):
+def imshow_on_ax(ax, data, interval=None, pos=None, size=None, title=None,
+                 stretch=vis.AsinhStretch(a=0.05)):
     '''
     displays image    
 
@@ -42,7 +43,7 @@ def imshow_on_ax(ax, data, interval=None, pos=None, size=None, title=None):
     else:
         interval = vis.ManualInterval(interval[0], interval[1])
     norm = vis.ImageNormalize(data, interval=interval,
-                              stretch=vis.SqrtStretch())
+                              stretch=stretch)
 
     if title is not None:
         ax.set_title(title)
@@ -55,7 +56,7 @@ def imshow_on_ax(ax, data, interval=None, pos=None, size=None, title=None):
         im = ax.imshow(data, origin="lower", cmap="gray", norm=norm, )
     return im
     
-def imshow(data, **kwargs):
+def imshow(data, **imshow_on_ax_kwargs):
     '''
     displays image data
 
@@ -78,9 +79,19 @@ def imshow(data, **kwargs):
 
     '''
     fig, ax = plt.subplots()
-    im = imshow_on_ax(ax, data, **kwargs)
+    im = imshow_on_ax(ax, data, **imshow_on_ax_kwargs)
     im_ratio = data.shape[0]/data.shape[1]
     fig.colorbar(im, fraction=0.047*im_ratio)
+    plt.show()
+
+def imshow_coords(data, wcs_object, stars=None, **imshow_on_ax_kwargs):
+    fig, ax = plt.subplots(subplot_kw=dict(projection=wcs_object))
+    ax.grid(color="white", ls="dashed", alpha=0.3)
+    ax.set(xlabel='Longitude', ylabel='Latitude')
+    imshow_on_ax(ax, data)
+    if stars is not None:
+        ax.scatter(stars['xcentroid'], stars['ycentroid'], s=50, edgecolors='r', 
+                   facecolors='none', label='Detected')
     plt.show()
 
 def hist_on_ax(ax, data, bins=1000, survival=True, title=None):
@@ -413,6 +424,7 @@ def plot(data: list[Sequence[float]],
         plt.savefig(fName, dpi=dpi*resolution, bbox_inches='tight')
     plt.show()
 
+
 def reduction(frame, reduced, color, positions, ysize, figdir):
     '''
     Plot cutout of original and reduced frame as well as respective histograms.
@@ -457,3 +469,13 @@ def reduction(frame, reduced, color, positions, ysize, figdir):
     fname = f"{figdir}/{ID}_{color}_reduction.png"
     subplots(2, 2, funcs, plots, title=f"Data reduction for {color}-band",
              fname=fname)
+    
+def plot_stars(im, stars, title=""):
+    ny, nx = im.shape
+    fig, ax = plt.subplots(figsize=(8, 6))
+    ax.scatter(stars['xcentroid'], stars['ycentroid'], s=50, edgecolors='r', 
+               facecolors='none', label='Detected')
+    imshow_on_ax(ax, im)
+    fig.legend()
+    ax.set_title(title)
+    plt.show()

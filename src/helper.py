@@ -5,13 +5,18 @@ Created on Sat Jan 24 21:36:16 2026
 @author: chris
 """
 
+import sys
+import os
 import numpy as np
 from astropy.io import fits
+from astropy.table import Table
 from astropy.coordinates import SkyCoord
 from astropy import units as u
 from PIL import Image
 from functools import wraps
 from timeit import default_timer
+import cProfile
+import pstats
 
 class ScienceFrame:
     '''
@@ -41,11 +46,32 @@ class ScienceFrame:
         '''
         rad_to_arcsec = 180/np.pi*60**2
         return 1e-3*rad_to_arcsec*self.get("XPIXSZ")/self.focal_length
+    
+    @property
+    def radius(self):
+        ''' 
+        half diagonal in arcsec
+        '''
+        return 0.5*np.sqrt(self.get("NAXIS1")**2 + self.get("NAXIS2")**2
+                           )*self.scale*u.arcsec
             
     def load(self, dtype=float):
-        # Load science image data
+        ''' 
+        Load science image data, eg. im=frame.load()
+        '''
         with fits.open(self.path, memmap=False) as hdul:
             return hdul[0].data.astype(dtype)
+    
+    def load_stars(self):
+        ''' 
+        loads matched gaia catalogue if it exists, eg. stars=frame.load_stars()
+        '''
+        with fits.open(self.path) as hdul:
+            if len(hdul) > 1 and "STARS" in hdul:
+                return Table.read(hdul["STARS"])
+            else:
+                print(f"No matched stars in {self.path}")
+                return None
         
         
 class ScienceFrameList(list):
@@ -122,6 +148,23 @@ class CalibFrameList(list):
     def unique(self, key):
         return sorted({f.get(key) for f in self})
     
+class HiddenPrints:
+    # https://stackoverflow.com/questions/8391411/how-to-block-calls-to-print
+    # Usage:
+    # with HiddenPrints():
+    #   print("This will not be printed")
+    # print("This will be printed as before")
+    def __enter__(self):
+        self._original_stdout = sys.stdout
+        # Redirect to devnull, but don't "close" the system handle
+        self._devnull = open(os.devnull, 'w')
+        sys.stdout = self._devnull
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        # Swap the original back BEFORE closing devnull
+        sys.stdout = self._original_stdout
+        self._devnull.close()
+    
 def functimer(f):
     '''
     prints runtime of function and function name
@@ -153,15 +196,42 @@ def functimer(f):
         return result
     return wrap
 
+def profiler(f_py=None, n=10, sortBy='cumtime'):
+    '''
+    Usage: @profiler
+            def function():
+
+    Parameters
+    ----------
+    n : int, optional
+        Number of subfunctions printed. The default is 10.
+    sortBy : str, optional
+        one of ('ncalls','tottime','cumtime'). The default is 'tottime'.
+
+    Returns
+    -------
+    TYPE
+        DESCRIPTION.
+
+    '''
+    assert callable(f_py) or f_py is None
+
+    def _decorator(f):
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            profiler = cProfile.Profile()
+            profiler.enable()
+            result = f(*args, **kwargs)
+            profiler.disable()
+            stats = pstats.Stats(
+                profiler).sort_stats(sortBy)
+            stats.print_stats(n)
+            return result
+        return wrapper
+    return _decorator(f_py) if callable(f_py) else _decorator
+
 def bin_data(data, bin_size):
     return np.asarray(Image.fromarray(data).reduce(bin_size))
-
-def get_dataset(name):
-    if name in DATASETS:
-        return DATASETS[name]
-    else:
-        raise ValueError(f"invalid {name=}. Has to be in {DATASETS.keys()}")
-        return
 
 def calc_px_scale(px_size: float, focal_length: float=4500):
     '''
@@ -183,9 +253,48 @@ def calc_px_scale(px_size: float, focal_length: float=4500):
     '''
     rad_to_arcsec = 180/np.pi*60**2
     return 1e-3*rad_to_arcsec*px_size/focal_length
+
+def print_statusline(msg: str):
+    last_msg_length = len(
+        getattr(print_statusline, 'last_msg', ''))
+    print(' ' * last_msg_length, end='\r')
+    print(msg, end='\r')
+    # Some say they needed this, I didn't.
+    sys.stdout.flush()
+    setattr(print_statusline, 'last_msg', msg)
+
+def print_on_line(msg: str, ncols: int=int(1e3)):
+    # go to the (start of the) previous line: \033[F
+    # move along ncols: \033[{ncols}G
+    print(f"\033[F\033[{ncols}G{msg}")
     
-DATASETS = {"20251104_lab": {"B": (1360, 1760), "V": (1300, 1680), 
-                             "i": (1425, 1860), "r": (1390, 1810), 
-                             "u": (1370, 1775)},
-            "20260114_lab": {"B": (610, 780), "V": (490, 705), "r": (625, 800)}
+def get_dataset(labname, kind):
+    dataset = DATASETS.get(labname)
+    if dataset is not None: 
+        dataset = dataset.get(kind)
+    if dataset is None:
+        if labname not in DATASETS:
+            raise ValueError(f"invalid {labname=}. Has to be in {DATASETS.keys()}")
+        if kind not in DATASETS[labname]:
+            raise ValueError(f"invalid {kind=}. Has to be in {DATASETS[labname].keys()}")
+    return dataset
+
+DATASETS = {"20251104_lab": {"centers": {"B": (1360, 1760), "V": (1300, 1680), 
+                                         "i": (1425, 1860), "r": (1390, 1810), 
+                                         "u": (1370, 1775)},
+                             "find_stars": {
+                                "B": dict(thresh=200, roundhi=0.5, 
+                                          sharplo=0.5, sharphi=0.9, peaklo=100), 
+                                "V": dict(thresh=200, peaklo=200), 
+                                "i": dict(thresh=200, peaklo=300), 
+                                "r": dict(thresh=150, peaklo=150), 
+                                "u":  dict(thresh=100, peaklo=50)},
+                             },
+            "20260114_lab": {"centers": {"B": (610, 780), "V": (490, 705), 
+                                         "r": (625, 800)},
+                             "find_stars": {
+                                 "B": dict(thresh=1000, peaklo=1000), # (1000, 800)
+                                 "V": dict(thresh=3000, peaklo=3000),
+                                 "r": dict(thresh=1000, peaklo=1000)}
+                             }
             }
