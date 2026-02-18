@@ -21,6 +21,7 @@ import warnings
 import helper
 import plot
 import io_data
+from helper import get_repo_root
 
 def calc_zero_point(mag, flux):
     """
@@ -189,7 +190,7 @@ def extract_value(table, value, index="t", column="idx"):
 if __name__ == "__main__":
     starttime = default_timer()
     close("all")
-    repo_root = io_data.get_repo_root()
+    repo_root = get_repo_root()
     labs = {"RR_Lyrae": "20251104_lab", "Transit": "20260114_lab"}
     directory = repo_root / "data" / labs["RR_Lyrae"]
     

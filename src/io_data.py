@@ -10,7 +10,7 @@ import glob
 import numpy as np
 from astropy.io import fits
 from timeit import default_timer
-from pathlib import Path
+from helper import get_repo_root
 
 # from helper import ScienceFrame, ScienceFrameList, CalibFrame, CalibFrameList
 import helper
@@ -128,8 +128,7 @@ def write_reduced_frame(reduced, header, path, new_object_name):
     hdr["HISTORY"] = "Bias subtracted"
     hdr["HISTORY"] = "Dark current subtracted"
     hdr["HISTORY"] = "Flat-field corrected"
-    hdu = fits.PrimaryHDU(data=reduced.astype(np.float32), header=hdr,
-                          do_not_scale_image_data=True)
+    hdu = fits.PrimaryHDU(data=reduced.astype(np.float32), header=hdr, do_not_scale_image_data=True)
     hdu.writeto(path, overwrite=True)
     return
 
@@ -138,8 +137,7 @@ def write_solved_frame(frame, new_wcs, path):
     header.update(new_wcs.to_header())
     fits.writeto(path, frame.load(), header, overwrite=True)
 
-def get_repo_root(base_dir: Path | None = None) -> Path:
-    return base_dir or Path(__file__).resolve().parents[1]
+
 
 if __name__ == "__main__":
     directory = get_repo_root() / "data/20260114_lab/"
