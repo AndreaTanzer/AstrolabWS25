@@ -1,4 +1,4 @@
-import reduce_data
+from reduce_data import data_reduction
 from plate_solving_parallel import plate_solve_all
 from io_data import read_folder
 
@@ -6,9 +6,10 @@ from io_data import read_folder
 def run_pipeline(repo_root, labname, force=False):
     directory = repo_root / "data" / labname
     print("Using data directory:", directory)
+    
     # perform bias and dark current subtraction, flat fielding
     # saved in directory / "Reduced"
-    reduce_data.data_reduction(directory, plotting=False, force_reduction=force)
+    data_reduction(directory, plotting=False, force_reduction=force)
     reduced = read_folder(directory / "Reduced")
     
     # takes ~40min if concurrent version is used vs ~10 min for parallel

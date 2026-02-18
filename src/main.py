@@ -10,6 +10,7 @@ from pipeline import run_pipeline
 from helper import get_repo_root
 
 if __name__ == "__main__":
+    
     close("all")
     labs = {"RR_Lyrae": "20251104_lab", "Transit": "20260114_lab"}
     repo_root = get_repo_root()
