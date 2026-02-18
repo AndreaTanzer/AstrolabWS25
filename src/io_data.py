@@ -66,22 +66,26 @@ def read(directory):
         contains bias, dark and flat hdus.
 
     '''
+    bias_dir = directory / "Bias"
+    dark_dir = directory / "Dark"
+    flat_dir = directory / "Flats"
+    science_dir = directory / "Science"
 
-    directory = os.path.abspath(os.path.expanduser(directory))
-    bias = read_folder(os.path.join(directory, "Bias"), sci_frame=False)
-    dark = read_folder(os.path.join(directory, "Dark"), sci_frame=False)
-    flat = read_folder(os.path.join(directory, "Flats"), sci_frame=False)
-    sci = read_folder(os.path.join(directory, "Science"))
-    
-    print("directory:",  directory)
+    print("Bias directory:", bias_dir)
+    print("Dark directory:", dark_dir)
+    print("Flat directory:", flat_dir)
+    print("Science directory:", science_dir)
 
+    bias = read_folder(bias_dir, sci_frame=False)
+    dark = read_folder(dark_dir, sci_frame=False)
+    flat = read_folder(flat_dir, sci_frame=False)
+    sci = read_folder(science_dir)
+  
     calibration = {"bias": bias, "dark": dark, "flat": flat}
     nx = sci.unique("NAXIS1")
     ny = sci.unique("NAXIS2")
-    print("nx:", nx)
-    print("ny:", ny)
-    print(f"(nx, ny)=({nx}, {ny})")
-    assert len(nx) == 1 and len(ny) == 1
+    if len(nx) != 1 or len(ny) != 1:
+        raise ValueError(f"Inconsistent science frame dimensions: nx={nx}, ny={ny}")
 
     nx_sci = nx[0]
     ny_sci = ny[0]
@@ -90,13 +94,15 @@ def read(directory):
             nx = frame.get("NAXIS1")
             ny = frame.get("NAXIS2")
             # Would need to interpolate calibration frame, not implemented
-            assert nx >= nx_sci and ny >= ny_sci 
+            if nx < nx_sci or ny < ny_sci:
+                raise ValueError(f"Calibration frame smaller than science frame: nx={nx}, ny={ny}, expected >= ({nx_sci}, {ny_sci})")
             if nx > nx_sci or ny > ny_sci:  # need to bin calibration frame
                 x_ratio = nx/nx_sci
                 y_ratio = ny/ny_sci
-                assert x_ratio == y_ratio and x_ratio == int(x_ratio)
+                if x_ratio != y_ratio or x_ratio != int(x_ratio):
+                    raise ValueError(f"Incompatible binning ratio: x_ratio={x_ratio}, y_ratio={y_ratio}, sci=({nx_sci}, {ny_sci}), calib=({nx}, {ny})")
                 frame.bin_size = int(x_ratio)
-                
+
     return sci, calibration
 
 def write_reduced_frame(reduced, header, path, new_object_name):
@@ -140,9 +146,5 @@ def write_solved_frame(frame, new_wcs, path):
 
 if __name__ == "__main__":
     directory = get_repo_root() / "data/20260114_lab/"
-
-    # hdrs_bias, bias = read_folder(directory+"Bias/", sci_frame=False)
-    # hdrs_flats, flats = read_folder(directory+"Flats/", sci_frame=False)
-    # hdrs, datas = read_folder(directory+"Science/")a
     sci, hdus = read(directory)
     pass

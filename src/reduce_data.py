@@ -8,7 +8,7 @@ Created on Sat Jan 24 22:15:03 2026
 import os
 import numpy as np
 import helper
-import io_data
+from io_data import read, write_reduced_frame
 import plot
 
 def create_master_frames(calib):
@@ -34,6 +34,7 @@ def create_master_frames(calib):
         master flat.
 
     '''
+    print("Creating Master Frame")
     # Step 1, create master bias
     mbias = np.median(calib["bias"].stack_data(), axis=0)
     
@@ -143,16 +144,13 @@ def reduce_all(scis, mbias, mdark_rate, mflat, directory, new_object_name=None,
                 continue
             # reduce image
             reduced = reduce(frame, mbias, mdark_rate, mflat)
-            io_data.write_reduced_frame(reduced, hdr, path, new_object_name)
+            write_reduced_frame(reduced, hdr, path, new_object_name)
     return
 
 def data_reduction(indir, rename_HAT=False, **reduce_all_kwargs):
-    scis, calibration = io_data.read(indir)
+    print("Starting Data reduction")
+    scis, calibration = read(indir)
     mbias, mdark_rate, mflat = create_master_frames(calibration)
-    if rename_HAT is True:
-        name_HAT = "HAT-P-32"
-    else: 
-        name_HAT = None
-    reduce_all(scis, mbias, mdark_rate, mflat, indir, 
-               new_object_name=name_HAT, **reduce_all_kwargs)
-    return
+    new_object_name = "HAT-P-32" if rename_HAT else None
+    reduce_all(scis, mbias, mdark_rate, mflat, indir, new_object_name=new_object_name, **reduce_all_kwargs)
+
