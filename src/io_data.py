@@ -9,7 +9,6 @@ import os
 import glob
 import numpy as np
 from astropy.io import fits
-from timeit import default_timer
 from helper import get_repo_root
 
 # from helper import ScienceFrame, ScienceFrameList, CalibFrame, CalibFrameList

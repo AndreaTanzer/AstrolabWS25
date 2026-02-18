@@ -7,8 +7,6 @@ Created on Sat Jan 24 22:15:03 2026
 
 import os
 import numpy as np
-from astropy.io import fits
-
 import helper
 import io_data
 import plot

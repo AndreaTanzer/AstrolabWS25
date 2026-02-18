@@ -1,7 +1,6 @@
 import reduce_data
 from plate_solving_parallel import plate_solve_all
 from io_data import read_folder
-from helper import get_repo_root
 
 
 def run_pipeline(repo_root, labname, force=False):
