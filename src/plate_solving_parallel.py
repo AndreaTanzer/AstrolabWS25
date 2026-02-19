@@ -43,13 +43,13 @@ def solve_single_frame_task(frame, find_kwargs, force_solve):
         hdr = solver.add_history("Failed Plate Solving")
         hdu = fits.PrimaryHDU(data=solver.frame.load(), header=hdr)
         hdu.writeto(solver.path, overwrite=True)
-        print(f"not enough stars: {len(solver.stars) if solver.stars else 0}")
-        print(f"{solver.path}")
+        # print(f"not enough stars: {len(solver.stars) if solver.stars else 0}")
+        # print(f"{solver.path}")
         return f"FAIL: {name} - {str(e)}"
     # 2. Solving (Using the table already in worker memory)
     solver.solve_wcs(_worker_gaia_table)
     
-    return f"DONE: {name} ({len(solver.stars)} stars)"
+    return None  # f"DONE: {name} ({len(solver.stars)} stars)"
 
 def init_worker(shared_table):
     """
@@ -133,7 +133,9 @@ def plate_solve_all(data: helper.ScienceFrameList, force_solve: bool=False,
         futures = [executor.submit(solve_single_frame_task, t[0], t[1], t[2]) for t in all_tasks]
         
         for future in futures:
-            print(future.result())
+            output = future.result()
+            if output is not None:
+                print(output)
 
 
 if __name__ == "__main__":

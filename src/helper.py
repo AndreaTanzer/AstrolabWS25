@@ -17,6 +17,13 @@ from functools import wraps
 from timeit import default_timer
 import cProfile
 import pstats
+from pathlib import Path
+
+
+def get_repo_root(base_dir: Path | None = None) -> Path:
+    """Return the repository root directory (parent of src/)."""
+    return base_dir or Path(__file__).resolve().parents[1]
+
 
 class ScienceFrame:
     '''

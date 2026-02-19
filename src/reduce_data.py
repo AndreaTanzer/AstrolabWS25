@@ -7,10 +7,12 @@ Created on Sat Jan 24 22:15:03 2026
 
 import os
 import numpy as np
-from astropy.io import fits
+<<<<<<< HEAD
 
+=======
+>>>>>>> 5e7b7511173a17b5a61d68adeae0f807f1acbfcd
 import helper
-import io_data
+from io_data import read, write_reduced_frame
 import plot
 
 def create_master_frames(calib):
@@ -36,6 +38,7 @@ def create_master_frames(calib):
         master flat.
 
     '''
+    print("Creating Master Frame")
     # Step 1, create master bias
     mbias = np.median(calib["bias"].stack_data(), axis=0)
     
@@ -67,7 +70,7 @@ def reduce(sci, mbias, mdark_rate, mflat):
     Reduce science frame given master bias, dark_rate and flat frames.
     This is 1.5x faster than doing the whole calculation at once because no 
     additional space needs to be allocated,
-    ie. return (data - mbias - sci.exposure*mdark_rate)/mflat
+    ie. return (data - mbias - sci.exposure*mdark_rate)/mflat - median()
 
     Parameters
     ----------
@@ -90,6 +93,10 @@ def reduce(sci, mbias, mdark_rate, mflat):
     data -= mbias  # Step 2
     data -= sci.get("EXPOSURE")*mdark_rate  # Step 4
     data /= mflat  # Step 7
+    # For photometry. We should actually use sigma_clipped_stats for this but
+    # the difference is ~1e-2 per pix with max values ~1e5 -> negligible
+    # median is 10 times faster (1s per pic vs 10s)
+    data -= np.median(data)
     return data
 
 
@@ -145,16 +152,13 @@ def reduce_all(scis, mbias, mdark_rate, mflat, directory, new_object_name=None,
                 continue
             # reduce image
             reduced = reduce(frame, mbias, mdark_rate, mflat)
-            io_data.write_reduced_frame(reduced, hdr, path, new_object_name)
+            write_reduced_frame(reduced, hdr, path, new_object_name)
     return
 
 def data_reduction(indir, rename_HAT=False, **reduce_all_kwargs):
-    scis, calibration = io_data.read(indir)
+    print("Starting Data reduction")
+    scis, calibration = read(indir)
     mbias, mdark_rate, mflat = create_master_frames(calibration)
-    if rename_HAT is True:
-        name_HAT = "HAT-P-32"
-    else: 
-        name_HAT = None
-    reduce_all(scis, mbias, mdark_rate, mflat, indir, 
-               new_object_name=name_HAT, **reduce_all_kwargs)
-    return
+    new_object_name = "HAT-P-32" if rename_HAT else None
+    reduce_all(scis, mbias, mdark_rate, mflat, indir, new_object_name=new_object_name, **reduce_all_kwargs)
+

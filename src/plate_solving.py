@@ -36,13 +36,17 @@ class PlateSolver:
     
     @property
     def im(self):
+        ''' 
+        To avoid loading image when just checking if it was solved before
+        '''
         if self._im is None:
-            im = self.frame.load()
-            im_stats = sigma_clipped_stats(im)
-            self._im = im - im_stats[1]
+            self._im = self.frame.load()
         return self._im
     
     def in_history(self, string):
+        ''' 
+        Check if string is contained in any line of history
+        '''
         history = self.frame.header.get("HISTORY", [])
         return any(string.upper() in str(record).upper() for record in history)
         
@@ -54,6 +58,95 @@ class PlateSolver:
     def failed_plate_solving(self):
         return self.in_history("Failed Plate Solving")
     
+    def add_history(self, new_entry):
+        '''
+        Adds new_entry to history unless it is already part of it
+
+        Parameters
+        ----------
+        new_entry : str
+            New entry to history, eg Plate Solved or Failed Plate Solving.
+
+        Returns
+        -------
+        header : fits.header.Header
+            new header with added history.
+
+        '''
+        header = self.frame.header.copy()
+        # otherwise multiple entries after multiple calls
+        old_hist = [str(h) for h in header["HISTORY"]
+                    if new_entry.upper() not in str(h).upper()]
+        del header["HISTORY"]
+        for line in old_hist:
+            header.add_history(line)
+        header.add_history(new_entry)
+        return header
+    
+    def write_solved_frame(self, stars: Table, wcs_solution: wcs.wcs.WCS):
+        '''
+        Updates header with coordinates of frame and matched stars
+
+        Parameters
+        ----------
+        stars : astropy.table.Table
+            Contains gaia_id, coordinates and position in image of stars
+        wcs_solution : wcs.wcs.WCS
+            Contains coordinates, orientation and transformation of field.
+
+        Returns
+        -------
+        None.
+
+        '''
+        path = Path(self.path)
+        output_dir = path.parent.parent / "Solved"
+        print(output_dir)
+        output_dir.mkdir(exist_ok=True)
+        output_path = output_dir / path.name
+        with fits.open(self.path, memmap=True) as hdul:
+            # update history
+            hdr = hdul[0].header
+            hist = hdr.get("HISTORY", [])
+            if isinstance(hist, str):
+                hist = [hist]
+            filtered = [h for h in hist 
+                        if "PLATE SOLVED" or "FAILED PLATE SOLVING" 
+                        not in h.upper()]
+            while "HISTORY" in hdr:
+                del hdr["HISTORY"]
+            for line in filtered:
+                hdr.add_history(line)
+            hdr.add_history("Plate Solved")
+            hdr.update(wcs_solution.to_header())
+            #primary_hdu = fits.PrimaryHDU(data=self.im, header=header)
+            
+            # create STARS extension
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", category=AstropyWarning)
+                # would print
+                # WARNING: Attribute `date` of type <class 'str'> cannot be added to FITS Header - skipping
+                # WARNING: Attribute `version` of type <class 'dict'> cannot be added to FITS Header - skipping
+                stars_hdu = fits.BinTableHDU(stars, name="STARS")
+            hdul.append(stars_hdu)
+            hdul.writeto(output_path, overwrite=True)
+        return
+    
+    def write_header_failed(self):
+        ''' 
+        Update history with "Failed Plate Solving"
+        '''
+        with fits.open(self.path, mode="update") as hdul:
+            hdr = hdul[0].header
+            hist = hdr.get("HISTORY", [])
+            if isinstance(hist, str):
+                hist = [hist]
+            # Avoid duplicates
+            if not any("FAILED PLATE SOLVING" in h.upper() for h in hist):
+                hdr.add_history("Failed Plate Solving")
+        hdul.flush()
+        return 
+       
     def find_stars(self, thresh: float=200, fwhm: int=13, roundhi: float=1, 
                    sharplo: float=0, sharphi: float=1, peaklo: float=100, 
                    printing: bool=False):
@@ -140,31 +233,6 @@ class PlateSolver:
         gaia_table = job.get_results()
         return gaia_table[:n_max]
     
-    def add_history(self, new_entry):
-        '''
-        Adds new_entry to history unless it is already part of it
-
-        Parameters
-        ----------
-        new_entry : str
-            New entry to history, eg Plate Solved or Failed Plate Solving.
-
-        Returns
-        -------
-        header : fits.header.Header
-            new header with added history.
-
-        '''
-        header = self.frame.header.copy()
-        # otherwise multiple entries after multiple calls
-        old_hist = [str(h) for h in header["HISTORY"]
-                    if new_entry.upper() not in str(h).upper()]
-        del header["HISTORY"]
-        for line in old_hist:
-            header.add_history(line)
-        header.add_history(new_entry)
-        return header
-    
     def solve_wcs(self, gaia_table, max_stars=30, plotting=False) -> wcs.wcs.WCS:
         '''
         Plate solve using star positions in image and coordinates of Gaia stars
@@ -221,20 +289,16 @@ class PlateSolver:
         # check if enough detected stars and Gaia stars are available
         if nsource < 5 or ntarget < 5:
             plot_stars(self.im, self.stars, title=f"{self.path}")
-            print(f"Too few source points: {nsource} or target points: {ntarget}")
-            hdr = self.add_history("Failed Plate Solving")
-            hdu = fits.PrimaryHDU(data=self.frame.load(), header=hdr)
-            hdu.writeto(self.path, overwrite=True)
+            # print(f"Too few source points: {nsource} or target points: {ntarget}")
+            self.write_header_failed()
             return None
         # match sources with targets using similar triangles
         try:
             transf, (source_list, target_list) = aa.find_transform(source_pts, target_pts)
         except aa.MaxIterError:
             plot_stars(self.im, self.stars, title=f"{self.path}")
-            print(f"Astroalign failed for {self.path}, too few stars, cloudy?")
-            hdr = self.add_history("Failed Plate Solving")
-            hdu = fits.PrimaryHDU(data=self.frame.load(), header=hdr)
-            hdu.writeto(self.path, overwrite=True)
+            # print(f"Astroalign failed for {self.path}, too few stars, cloudy?")
+            self.write_header_failed()
             return None
         except TypeError as e:
             print(e)
@@ -263,41 +327,7 @@ class PlateSolver:
         self.write_solved_frame(self.stars["xcentroid", "ycentroid"], w_final)
         return w_final
 
-    def write_solved_frame(self, stars: Table, wcs_solution: wcs.wcs.WCS):
-        '''
-        Updates header with coordinates of frame and matched stars
 
-        Parameters
-        ----------
-        stars : astropy.table.Table
-            Contains gaia_id, coordinates and position in image of stars
-        wcs_solution : wcs.wcs.WCS
-            Contains coordinates, orientation and transformation of field.
-
-        Returns
-        -------
-        None.
-
-        '''
-        header = self.add_history("Plate Solved")
-        header.update(wcs_solution.to_header())
-        primary_hdu = fits.PrimaryHDU(data=self.im, header=header)
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", category=AstropyWarning)
-            # would print
-            # WARNING: Attribute `date` of type <class 'str'> cannot be added to FITS Header - skipping
-            # WARNING: Attribute `version` of type <class 'dict'> cannot be added to FITS Header - skipping
-            stars_hdu = fits.BinTableHDU(stars, name="STARS")
-        hdul = fits.HDUList([primary_hdu, stars_hdu])
-        
-        path = Path(self.path)
-        output_dir = path.parent.parent / "Solved"
-        print(output_dir)
-        output_dir.mkdir(exist_ok=True)
-        fname = str(self.path).split(os.sep)[-1]
-        output_path = output_dir / fname
-        hdul.writeto(output_path, overwrite=True)
-        hdul.close()
 
 def plot_stars(im, stars, title=""):
     ny, nx = im.shape
