@@ -71,18 +71,10 @@ def read(directory):
     flat_dir = directory / "Flats"
     science_dir = directory / "Science"
 
-<<<<<<< HEAD
-    directory = os.path.abspath(os.path.expanduser(directory))
-    bias = read_folder(os.path.join(directory, "Bias"), sci_frame=False)
-    dark = read_folder(os.path.join(directory, "Dark"), sci_frame=False)
-    flat = read_folder(os.path.join(directory, "Flats"), sci_frame=False)
-    sci = read_folder(os.path.join(directory, "Science"))
-=======
     print("Bias directory:", bias_dir)
     print("Dark directory:", dark_dir)
     print("Flat directory:", flat_dir)
     print("Science directory:", science_dir)
->>>>>>> 5e7b7511173a17b5a61d68adeae0f807f1acbfcd
 
     bias = read_folder(bias_dir, sci_frame=False)
     dark = read_folder(dark_dir, sci_frame=False)
@@ -92,12 +84,9 @@ def read(directory):
     calibration = {"bias": bias, "dark": dark, "flat": flat}
     nx = sci.unique("NAXIS1")
     ny = sci.unique("NAXIS2")
-<<<<<<< HEAD
-    assert len(nx) == 1 and len(ny) == 1
-=======
+
     if len(nx) != 1 or len(ny) != 1:
         raise ValueError(f"Inconsistent science frame dimensions: nx={nx}, ny={ny}")
->>>>>>> 5e7b7511173a17b5a61d68adeae0f807f1acbfcd
 
     nx_sci = nx[0]
     ny_sci = ny[0]

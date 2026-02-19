@@ -7,10 +7,7 @@ Created on Sat Jan 24 22:15:03 2026
 
 import os
 import numpy as np
-<<<<<<< HEAD
 
-=======
->>>>>>> 5e7b7511173a17b5a61d68adeae0f807f1acbfcd
 import helper
 from io_data import read, write_reduced_frame
 import plot
