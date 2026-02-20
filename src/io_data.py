@@ -7,13 +7,13 @@ Created on Tue Jan 20 17:14:45 2026
 
 import os
 import glob
+from pathlib import Path
+import warnings
 import numpy as np
 from astropy.io import fits
-from helper import get_repo_root
+from astropy.utils.exceptions import AstropyWarning
 
-# from helper import ScienceFrame, ScienceFrameList, CalibFrame, CalibFrameList
 import helper
-
 
 def read_folder(directory, sci_frame=True):
     '''
@@ -138,14 +138,71 @@ def write_reduced_frame(reduced, header, path, new_object_name):
     hdu.writeto(path, overwrite=True)
     return
 
-def write_solved_frame(frame, new_wcs, path):
-    header = frame.header.copy()
-    header.update(new_wcs.to_header())
-    fits.writeto(path, frame.load(), header, overwrite=True)
+def write_solved_frame(outpath: str|Path, stars, wcs_solution):
+    '''
+    Updates header with coordinates of frame and matched stars
 
+    Parameters
+    ----------
+    outpath : str | Path
+        path to save file
+    stars : astropy.table.Table
+        Contains gaia_id, coordinates and position in image of stars
+    wcs_solution : wcs.wcs.WCS
+        Contains coordinates, orientation and transformation of field.
+
+    Returns
+    -------
+    None.
+
+    '''
+    path = Path(outpath)
+    output_dir = path.parent.parent / "Solved"
+    output_dir.mkdir(exist_ok=True)
+    output_path = output_dir / path.name
+    with fits.open(outpath, memmap=True) as hdul:
+        # update history
+        hdr = hdul[0].header
+        hist = hdr.get("HISTORY", [])
+        if isinstance(hist, str):
+            hist = [hist]
+        
+        filtered = [h for h in hist 
+                    if "PLATE SOLVED" not in h.upper()
+                    or "FAILED PLATE SOLVING" not in h.upper()]
+        del hdr["HISTORY"]
+        for line in filtered:
+            hdr.add_history(line)
+        hdr.add_history("Plate Solved")
+        hdr.update(wcs_solution.to_header()) 
+        
+        # clearing meta prevents
+        # WARNING: Attribute `date` of type <class 'str'> cannot be added to FITS Header - skipping
+        # WARNING: Attribute `version` of type <class 'dict'> cannot be added to FITS Header - skipping
+        stars.meta = {}
+        # create STARS extension
+        stars_hdu = fits.BinTableHDU(stars, name="STARS")
+        new_hdul = fits.HDUList([fits.PrimaryHDU(data=hdul[0].data, header=hdr), stars_hdu])
+        new_hdul.writeto(output_path, overwrite=True)
+    return
+
+def write_header_failed(outpath):
+    ''' 
+    Update history with "Failed Plate Solving"
+    '''
+    with fits.open(outpath, mode="update") as hdul:
+        hdr = hdul[0].header
+        hist = hdr.get("HISTORY", [])
+        if isinstance(hist, str):
+            hist = [hist]
+        # Avoid duplicates
+        if not any("FAILED PLATE SOLVING" in h.upper() for h in hist):
+            hdr.add_history("Failed Plate Solving")
+    hdul.flush()
+    return 
 
 
 if __name__ == "__main__":
-    directory = get_repo_root() / "data/20260114_lab/"
+    directory = helper.get_repo_root() / "data/20260114_lab/"
     sci, hdus = read(directory)
     pass

@@ -9,10 +9,10 @@ import numpy as np
 import pandas as pd
 from astropy import wcs, table, time
 import astropy.units as u
-from astropy.coordinates import SkyCoord 
 from astropy.stats import sigma_clipped_stats
 from astroquery.simbad import Simbad
-from photutils import detection, psf, aperture
+from astroquery.vizier import Vizier
+from photutils import psf, aperture
 # from photutils.aperture import CircularAperture
 from matplotlib.pyplot import close
 from timeit import default_timer
@@ -23,7 +23,7 @@ import plot
 import io_data
 from helper import get_repo_root
 
-def calc_zero_point(mag, flux):
+def calc_zero_point(mag, flux, zp_default=np.nan):
     """
     Calculates magnitude where flux drops to 1
 
@@ -42,7 +42,13 @@ def calc_zero_point(mag, flux):
     """
     zps = mag + 2.5*np.log10(flux)
     zp_mean, zp_median, zp_std = sigma_clipped_stats(zps, sigma=2)
-    return zp_mean
+    if np.isnan(zp_mean):
+        # none of the detected stars have brightness data in the requested band
+        zp_mean = zp_default 
+        default_flag = True
+    else:
+        default_flag = False
+    return zp_mean, default_flag
 
 def calc_magnitude(flux, zp):
     with warnings.catch_warnings():
@@ -50,7 +56,8 @@ def calc_magnitude(flux, zp):
         warnings.simplefilter("ignore", category=RuntimeWarning)
         mag = zp - 2.5*np.log10(flux)
     return mag
-    
+
+# Not that many stars with magnitude data across bands, calibration fails at times
 def query_Simbad(vals_with_idx, band, radius_arcsec=5):
     upload_table = table.Table(vals_with_idx, names=["idx", "ra", "dec"])
     radius_deg = radius_arcsec/60**2  # cone search radius
@@ -86,28 +93,69 @@ def query_Simbad_id(vals_with_idx, band="G", radius_arcsec=10):
     df = simbad_data[["idx", "main_id"]]
     return df
 
-def aperture_photometry(frame, plotting=False):
-    # load data
-    im = frame.load() 
-    stars = frame.load_stars()  
+def get_star_pos(frame):
+    stars = frame.load_stars()
     if stars is None:
         return None
+    xypos = np.transpose((stars['xcentroid'], stars['ycentroid']))
+    w = wcs.WCS(frame.header)
+    # 0 because python starts counting at 0
+    star_coords = w.all_pix2world(xypos, 0)
+    ra, dec = star_coords[:, 0], star_coords[:, 1]
+    pos = dict(stars=stars, w=w, xypos=xypos, ra=ra, dec=dec)
+    return pos
+
+def get_coords_with_idx(pos):
+    idx = np.arange(pos["ra"].size) + 1
+    coords = np.vstack([idx, pos["ra"], pos["dec"]]).T
+    return coords
+
+def aperture_photometry(frame, zp_default, fwhm=10, r_in=2, r_out=3, 
+                        plotting=False, calc_fwhm=False):
+    '''
+    Perform aperture photometry on all detected stars in frame.
+    Calibrate 
+
+    Parameters
+    ----------
+    frame : TYPE
+        DESCRIPTION.
+    zp_default : TYPE
+        DESCRIPTION.
+    fwhm : int, optional
+        Photometric radius is 2*fwhm. 10 seems to be pretty constant across frames.
+        Probably best to keep it constant. The default is 10.
+    plotting : TYPE, optional
+        DESCRIPTION. The default is False.
+
+    Returns
+    -------
+    phot_table_merged : TYPE
+        DESCRIPTION.
+    zp : TYPE
+        DESCRIPTION.
+
+    '''
+    # load data
+    im = frame.load() 
     
     # construct coordinate system and plot
-    w = wcs.WCS(frame.header)
-    xypos = np.transpose((stars['xcentroid'], stars['ycentroid']))
-    star_coord_vals = w.all_pix2world(xypos, 0)
+    star_pos = get_star_pos(frame)
+    if star_pos is None:
+        raise AttributeError("frame has no stars extension")
     if plotting is True:
         title = frame.path + ", plate solved"
-        plot.imshow_coords(im, w, stars, title=title)
+        plot.imshow_coords(im, star_pos["w"], star_pos["stars"], title=title)
+    
+    if calc_fwhm is True:
+        # fit_shape: diameter of area to look for star
+        fwhms = psf.fit_fwhm(im, xypos=star_pos["xypos"], fit_shape=39)
+        fwhm = int(np.median(fwhms))
+        print(f"{fwhm=:.1f}")
     
     # perform aperture photometry on all stars
-    # fit_shape: diameter of area to look for star
-    fwhms = psf.fit_fwhm(im, xypos=xypos, fit_shape=39)
-    fwhm = int(np.median(fwhms))
-    
-    aptr = aperture.CircularAperture(xypos, r=fwhm)
-    annulus = aperture.CircularAnnulus(xypos, r_in=2*fwhm, r_out=3*fwhm)
+    aptr = aperture.CircularAperture(star_pos["xypos"], r=fwhm)
+    annulus = aperture.CircularAnnulus(star_pos["xypos"], r_in=r_in*fwhm, r_out=r_out*fwhm)
     aperstats = aperture.ApertureStats(im, annulus)
     bkg_mean = aperstats.mean
     phot_table = aperture.aperture_photometry(im, aptr)
@@ -119,50 +167,26 @@ def aperture_photometry(frame, plotting=False):
         col.format = "{:.4g}"
     time_str = frame.get("DATE-OBS")
     phot_table["t"] = time.Time(time_str, scale="utc", format="isot")
-    phot_table["ra"] = star_coord_vals[:, 0]
-    phot_table["dec"] = star_coord_vals[:, 1]
-    # star_coords = SkyCoord(ra=star_coord_vals[:, 0]*u.deg,
-    #                       dec=star_coord_vals[:, 1]*u.deg, frame="icrs")
-    # -------------------------------------------------------------------------
-    # TODO: query simbad for coordinates of stars, extract magnitudes 
-    # (maybe check if star is variable), use stars (median?) to calibrate flux
-    
-    # from another code where upload_table contains the search_name
-    # here we would construct an astropy table containing the coordinates of 
-    # our detected stars. 
-    # # 2. Query SIMBAD
-    # query = """
-    # SELECT 
-    #     up.search_name, b.main_id, b.ra, b.dec, b.otype,
-    #     f.filter, f.flux, b.galdim_majaxis, b.galdim_minaxis,
-    #     b.rvz_radvel, b.plx_value
-    # FROM TAP_UPLOAD.targets AS up
-    # JOIN ident AS i ON i.id = up.search_name
-    # JOIN basic AS b ON i.oidref = b.oid
-    # LEFT JOIN flux AS f ON b.oid = f.oidref
-    # """
-    # result = Simbad.query_tap(query, targets=upload_table)
-    
-    # to see which columns are available
-    # Simbad.list_columns("basic").pprint_all()
-    # Simbad.list_columns("flux").pprint_all()
-    
+    phot_table["ra"] = star_pos["ra"]
+    phot_table["dec"] = star_pos["dec"]
+
     # calibrate image
-    # 0 because python starts counting at 0
-    vals_with_idx = phot_table["idx", "ra", "dec"].to_pandas().values
-    simbad_data = query_Simbad(vals_with_idx, frame.get("filter"))
+    coords_with_idx = get_coords_with_idx(star_pos)
+    simbad_data = query_Simbad(coords_with_idx, frame.get("filter"))
     flux_series = pd.Series(phot_table["flux"])
     flux_series = flux_series.loc[flux_series>0]
     simbad_data["flux"] = simbad_data["idx"].map(flux_series)
     # restrict to sources that have positive flux after background subtraction
     simbad_existent = simbad_data.loc[simbad_data["flux"]>0]
     # Calibrate image using sources
-    zp = calc_zero_point(simbad_existent["mag"], simbad_existent["flux"])
+    zp, default_flag = calc_zero_point(simbad_existent["mag"], simbad_existent["flux"], zp_default)
+    phot_table["default_zp"] = default_flag
     # Calculate magnitudes from flux using zero point
     phot_table["mag"] = calc_magnitude(phot_table["flux"], zp)
+    phot_table["mag"].format = "{:.2f}"
     # -------------------------------------------------------------------------
     # Get main_id of stars
-    ids = query_Simbad_id(vals_with_idx)
+    ids = query_Simbad_id(coords_with_idx)
     phot_df = phot_table.to_pandas()
     # drop sources without Gaia G magnitude
     merged_df = phot_df.merge(ids, on="idx", how="right")
@@ -172,7 +196,7 @@ def aperture_photometry(frame, plotting=False):
     merged_df.sort_values(by="mag").drop_duplicates(subset="main_id", keep="first", 
                                                     inplace=True)
     phot_table_merged = table.Table.from_pandas(merged_df)
-    return phot_table_merged
+    return phot_table_merged, zp
 
 def get_common_stars(table):
     # get stars visible across (almost) all frames
@@ -187,6 +211,31 @@ def extract_value(table, value, index="t", column="idx"):
     matrix = df.pivot(index=index, columns=column, values=value)
     return matrix
 
+def band_photometry(data, band, main_id="V* RR Lyr", verbose=True, **phot_kwargs):
+    phot_tables = []
+    data_band = data.filter(filter=band)
+    zp_prev = np.nan
+    for i, frame in enumerate(data_band):
+        helper.print_statusline(f"{i+1}/{len(data_band)}")
+        try:
+            # use previously calculated zp if calibration failed because no detected
+            # star has magnitude data in the requested band
+            phot_table, zp = aperture_photometry(frame, zp_prev, **phot_kwargs)
+            if phot_table is not None:
+                phot_tables.append(phot_table)
+            if not np.isnan(zp):
+                zp_prev = zp
+        except Exception as e:
+            print(f"{i}: {e}\n")
+            continue
+    phot_tables = table.vstack(phot_tables, metadata_conflicts="silent")
+    phot_tables.sort(["main_id", "t"])
+    phot_target = phot_tables[phot_tables["main_id"]==main_id]
+    if verbose:
+        phot_target["t", "main_id", "mag"].pprint_all()
+        plot.plot([phot_target["t"].datetime, phot_target["mag"]], title=band, ylabel="mag", marker=".")
+    return phot_target
+
 if __name__ == "__main__":
     starttime = default_timer()
     close("all")
@@ -196,24 +245,14 @@ if __name__ == "__main__":
     
     # read data
     data = io_data.read_folder(directory / "Solved")
-    phot_tables = []
-    magsRR = []
-    data_r = data.filter(filter="r")
-    for i, frame in enumerate(data_r):
-        print(f"{i+1}/{len(data_r)}")
-        try:
-            phot_table = aperture_photometry(frame)
-            if phot_table is not None:
-                phot_tables.append(phot_table)
-                magsRR.append(phot_table["aperture_sum"][0])
-        except Exception as e:
-            print(f"{i}: {e}")
-            continue
-    phot_tables = table.vstack(phot_tables, metadata_conflicts="silent")
-    phot_tables.sort(["main_id", "t"])
-    phot_tables["t", "main_id", "mag"].pprint_all()
-    small_table = get_common_stars(phot_table)
-    flux = extract_value(small_table, "aperture_sum")
+    # rr_lyrae = band_photometry(data, "V", r_in=1, r_out=2)
+    #small_table = get_common_stars(rr_lyrae)
+    #flux = extract_value(small_table, "aperture_sum")
+    
+    star_pos = get_star_pos(data[0])
+    coords_with_idx = get_coords_with_idx(star_pos)
+    band = data[0].get("filter")
+    query_Vizier(coords_with_idx, band)
 
     print('Execution Time: %.2f s' % (default_timer()-starttime))
     

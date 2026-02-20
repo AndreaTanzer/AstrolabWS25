@@ -5,11 +5,8 @@ Created on Mon Feb 16 20:18:20 2026
 @author: chris
 """
 
-import numpy as np
 import os 
 from concurrent.futures import ProcessPoolExecutor
-from astropy import wcs
-from astropy.io import fits
 import matplotlib.pyplot as plt
 import logging
 
@@ -19,36 +16,39 @@ from plate_solving import PlateSolver
 
 
 # used locally by each worker process
-_worker_gaia_table = None
+_worker_star_table = None
 
 def solve_single_frame_task(frame, find_kwargs, force_solve):
     """
     The actual task run for every image.
     """
-    global _worker_gaia_table
+    global _worker_star_table
     name = str(frame.path).split(os.sep)[-1]
     solver = PlateSolver(frame)
     already_done = solver.is_plate_solved or solver.failed_plate_solving
     if already_done and not force_solve:
         # already plate solved, no need to calculate anything
         # or solving failed before
-        return f"SKIP: {name}"
+        return None  # f"SKIP: {name}"
     
     try:
-        # 1. Detection (The heavy CPU part)
+        # 1. Detection
         solver.find_stars(**find_kwargs)
         if solver.stars is None:
             return f"FAIL: {name} - No stars found"
     except AssertionError as e:
-        hdr = solver.add_history("Failed Plate Solving")
-        hdu = fits.PrimaryHDU(data=solver.frame.load(), header=hdr)
-        hdu.writeto(solver.path, overwrite=True)
+        io_data.write_header_failed(solver.path)
         # print(f"not enough stars: {len(solver.stars) if solver.stars else 0}")
         # print(f"{solver.path}")
         return f"FAIL: {name} - {str(e)}"
     # 2. Solving (Using the table already in worker memory)
-    solver.solve_wcs(_worker_gaia_table)
-    
+    w = solver.solve_wcs(_worker_star_table)
+    if w is None:
+        return f"FAIL: {name} - Couldn't solve"
+    # 3. Use coordinates to search at all star positions with weaker pos constraints,
+    #    extract magnitudes photometric calibration
+    star_data = solver.extract_star_data(w)
+    io_data.write_solved_frame(solver.path, star_data, w)
     return None  # f"DONE: {name} ({len(solver.stars)} stars)"
 
 def init_worker(shared_table):
@@ -56,15 +56,14 @@ def init_worker(shared_table):
     This runs ONCE per CPU core when the process starts.
     It sets the Gaia table in the worker's global memory.
     """
-    global _worker_gaia_table
-    _worker_gaia_table = shared_table
+    global _worker_star_table
+    _worker_star_table = shared_table
     # Suppress No sources found warnings
     # warnings.filterwarnings('ignore', category=UserWarning, append=True)
     # Suppress Gaia password warnings
     logging.getLogger('astroquery').setLevel(logging.ERROR)
 
 @helper.functimer
-# @helper.profiler(n=20)
 def plate_solve_all(data: helper.ScienceFrameList, force_solve: bool=False, 
                     filter_kwargs: dict=None):
     '''
@@ -90,12 +89,13 @@ def plate_solve_all(data: helper.ScienceFrameList, force_solve: bool=False,
         name = path_str.split(os.sep)[-3]
         filter_kwargs = helper.get_dataset(name, "find_stars")
     
-    # 2. Global Gaia Query
-    print("Fetching Global Gaia reference catalog...")
+    # 2. Global Star Query
+    print("Fetching Global UCAC4 reference catalog...")
     temp_solver = PlateSolver(data[0])
     for j in range(10):  # randomly throws errors
         try:  # if larger than 2r, star wouldnt be in FOV
-            gaia_table = temp_solver.query_gaia(1.5*data[0].radius)
+            star_table = temp_solver.query_vizier(2*data[0].radius)
+            # gaia_table = temp_solver.query_gaia(1.5*data[0].radius)
             break
         except Exception as e:
             if j == 9:
@@ -114,7 +114,7 @@ def plate_solve_all(data: helper.ScienceFrameList, force_solve: bool=False,
             else:
                 force_dict[filt] = False
                 
-    # Create a single "Task List" for all filters
+    # Create task list for all filters
     all_tasks = []
     for frame in data:
         filt = frame.get("filter")
@@ -128,7 +128,7 @@ def plate_solve_all(data: helper.ScienceFrameList, force_solve: bool=False,
     num_workers = max(1, os.cpu_count() - 1)
     print(f"Launching pool for {len(all_tasks)} frames across {num_workers} cores...")
     with ProcessPoolExecutor(max_workers=num_workers, initializer=init_worker, 
-                             initargs=(gaia_table,)) as executor:
+                             initargs=(star_table,)) as executor:
         # We pass the pre-matched kwargs directly into the submit call
         futures = [executor.submit(solve_single_frame_task, t[0], t[1], t[2]) for t in all_tasks]
         
@@ -147,10 +147,11 @@ if __name__ == "__main__":
     plate_solve_all(data, force_solve=True)
     
     # example usage
-    frame = data.filter(filter="B")[5]
-    stars = frame.load_stars()  
-    xypos = np.transpose((stars['xcentroid'], stars['ycentroid']))
-    w = wcs.WCS(frame.header)
+    # data = io_data.read_folder(directory+"/Solved")
+    # frame = data.filter(filter="B")[5]
+    # stars = frame.load_stars()  
+    # xypos = np.transpose((stars['xcentroid'], stars['ycentroid']))
+    # w = wcs.WCS(frame.header)
     
 
 
