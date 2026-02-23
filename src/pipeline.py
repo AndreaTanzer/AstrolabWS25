@@ -2,7 +2,7 @@ from reduce_data import data_reduction
 from plate_solving_parallel import plate_solve_all
 from io_data import read_folder
 from helper import functimer
-
+# from plate_solving import plate_solve_all
 
 @functimer
 def run_pipeline(repo_root, labname, force=False):

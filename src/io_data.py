@@ -8,11 +8,8 @@ Created on Tue Jan 20 17:14:45 2026
 import os
 import glob
 from pathlib import Path
-import warnings
 import numpy as np
 from astropy.io import fits
-from astropy.utils.exceptions import AstropyWarning
-
 import helper
 
 def read_folder(directory, sci_frame=True):
