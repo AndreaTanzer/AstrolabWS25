@@ -19,38 +19,43 @@ from plate_solving import PlateSolver
 _worker_star_table = None
 
 def solve_single_frame_task(frame, find_kwargs, force_solve):
-    """
-    The actual task run for every image.
-    """
     global _worker_star_table
+
     name = str(frame.path).split(os.sep)[-1]
+    print(f"[WORKER] START {name}", flush=True)
+
     solver = PlateSolver(frame)
+
     already_done = solver.is_plate_solved or solver.failed_plate_solving
     if already_done and not force_solve:
-        # already plate solved, no need to calculate anything
-        # or solving failed before
-        return None  # f"SKIP: {name}"
-    
-    try:
-        # 1. Detection
-        solver.find_stars(**find_kwargs)
-        if solver.stars is None:
-            return f"FAIL: {name} - No stars found"
-    except AssertionError as e:
-        io_data.write_header_failed(solver.path)
-        # print(f"not enough stars: {len(solver.stars) if solver.stars else 0}")
-        # print(f"{solver.path}")
-        return f"FAIL: {name} - {str(e)}"
-    # 2. Solving (Using the table already in worker memory)
-    w = solver.solve_wcs(_worker_star_table)
-    if w is None:
-        return f"FAIL: {name} - Couldn't solve"
-    # 3. Use coordinates to search at all star positions with weaker pos constraints,
-    #    extract magnitudes photometric calibration
-    star_data = solver.extract_star_data(w)
-    io_data.write_solved_frame(solver.path, star_data, w)
-    return None  # f"DONE: {name} ({len(solver.stars)} stars)"
+        print(f"[WORKER] SKIP {name}", flush=True)
+        return None
 
+    try:
+        print(f"[WORKER] {name} find_stars START", flush=True)
+        solver.find_stars(**find_kwargs)
+        print(f"[WORKER] {name} find_stars DONE ({len(solver.stars)})", flush=True)
+    except AssertionError as e:
+        print(f"[WORKER] {name} find_stars FAIL", flush=True)
+        io_data.write_header_failed(solver.path)
+        return f"FAIL: {name} - {str(e)}"
+
+    print(f"[WORKER] {name} solve_wcs START", flush=True)
+    w = solver.solve_wcs(_worker_star_table)
+    print(f"[WORKER] {name} solve_wcs RETURNED", flush=True)
+
+    if w is None:
+        print(f"[WORKER] {name} solve_wcs NONE", flush=True)
+        return f"FAIL: {name} - Couldn't solve"
+
+    print(f"[WORKER] {name} extract_star_data START", flush=True)
+    star_data = solver.extract_star_data(w)
+    print(f"[WORKER] {name} extract_star_data DONE", flush=True)
+
+    io_data.write_solved_frame(solver.path, star_data, w)
+    print(f"[WORKER] DONE {name}", flush=True)
+
+    return None
 def init_worker(shared_table):
     """
     This runs ONCE per CPU core when the process starts.
@@ -130,13 +135,28 @@ def plate_solve_all(data: helper.ScienceFrameList, force_solve: bool=False,
     with ProcessPoolExecutor(max_workers=num_workers, initializer=init_worker, 
                              initargs=(star_table,)) as executor:
         # We pass the pre-matched kwargs directly into the submit call
-        futures = [executor.submit(solve_single_frame_task, t[0], t[1], t[2]) for t in all_tasks]
         
-        for future in futures:
+        # futures = [executor.submit(solve_single_frame_task, t[0], t[1], t[2]) for t in all_tasks]
+
+        # total = len(futures)
+        # for i, future in enumerate(futures, start=1):
+        #     print(f"[{i}/{total}] waiting for result... future={future}")
+        #     output = future.result()
+        #     if output is not None:
+        #         print(output)
+        futures = []
+        names = []
+
+        for (frame, current_kwargs, should_force) in all_tasks:
+            futures.append(executor.submit(solve_single_frame_task, frame, current_kwargs, should_force))
+            names.append(str(frame.path).split(os.sep)[-1])
+
+        total = len(futures)
+        for i, (future, name) in enumerate(zip(futures, names), start=1):
+            print(f"[{i}/{total}] waiting: {name}")
             output = future.result()
             if output is not None:
                 print(output)
-
 
 if __name__ == "__main__":
     plt.close("all")
