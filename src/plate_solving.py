@@ -8,7 +8,7 @@ Created on Wed Feb 11 18:32:20 2026
 import numpy as np
 from scipy.spatial import cKDTree
 import cv2
-from astropy.coordinates import SkyCoord, Angle
+from astropy.coordinates import SkyCoord
 from astropy import wcs, table
 import astropy.units as u
 from astroquery.gaia import Gaia
@@ -16,6 +16,8 @@ from astroquery.vizier import Vizier
 import astroalign as aa
 from photutils import detection
 import matplotlib.pyplot as plt
+import os
+import time
 
 import helper
 import plot
@@ -151,7 +153,7 @@ class PlateSolver:
     
     def query_around_vizier(self, w, radius_arcsec=20, mag_limit: float=13):
         coords_with_idx = self.get_star_coords(w)
-        idx, ra, dec = coords_with_idx.T
+        _, ra, dec = coords_with_idx.T
         # _q is the original index in result
         upload_table = table.QTable([ra*u.deg, dec*u.deg], 
                                     names=["_RAJ2000", "_DEJ2000"])
@@ -207,25 +209,35 @@ class PlateSolver:
         ntarget = len(target_pts)
         # check if enough detected stars and Gaia stars are available
         if nsource < 5 or ntarget < 5:
-            plot_stars(self.im, self.stars, title=f"{self.path}")
+            if plotting:
+                plot_stars(self.im, self.stars, title=f"{self.path}")
             # print(f"Too few source points: {nsource} or target points: {ntarget}")
             io_data.write_header_failed(self.path)
             return None
         # match sources with targets using similar triangles
+        print(f"solve_wcs: {self.path}", flush=True)
+        print(f"solve_wcs: nsource={nsource} ntarget={ntarget} max_stars={max_stars}", flush=True)
+        print(f"solve_wcs: source_pts shape={source_pts.shape} target_pts shape={target_pts.shape}", flush=True)
+
+        t0 = time.perf_counter()
+        print("solve_wcs: aa.find_transform START", flush=True)
         try:
-            transf, (source_list, target_list) = aa.find_transform(source_pts, target_pts)
+            _, (source_list, target_list) = aa.find_transform(source_pts, target_pts)
         except aa.MaxIterError:
-            if plotting is True:
+            print("solve_wcs: aa.find_transform MaxIterError", flush=True)
+            if plotting:
                 plot_stars(self.im, self.stars, title=f"{self.path}")
             # print(f"Astroalign failed for {self.path}, too few stars, cloudy?")
             io_data.write_header_failed(self.path)
             return None
         except TypeError as e:
-            print(e)
+            print(f"solve_wcs: aa.find_transform TypeError: {e}", flush=True)
             return None
+        dt = time.perf_counter() - t0
+        print(f"solve_wcs: aa.find_transform DONE dt_s={dt:.2f} matched={len(source_list)}", flush=True)
         # build WCS from matched pairs
         tree = cKDTree(target_pts)
-        distances, indices = tree.query(target_list)
+        _, indices = tree.query(target_list)
         matched_coords = star_coords[mask][indices]
         w_final = wcs.utils.fit_wcs_from_points(xy=(source_list[:,0], source_list[:,1]), 
                                                 world_coords=matched_coords,
@@ -276,7 +288,6 @@ class PlateSolver:
 
 
 def plot_stars(im, stars, title=""):
-    ny, nx = im.shape
     fig, ax = plt.subplots(figsize=(8, 6))
     ax.scatter(stars['xcentroid'], stars['ycentroid'], s=50, edgecolors='r', facecolors='none', label='Detected')
     plot.imshow_on_ax(ax, im)
@@ -337,17 +348,26 @@ def plate_solve_filter(all_data: helper.ScienceFrameList, filt: str,
         try:
             solver.find_stars(**find_kwargs)
         except AssertionError:
+            print("  step: find_stars FAILED (AssertionError)", flush=True)
             io_data.write_header_failed(solver.path)
             continue
-        print(f", found {len(solver.stars)} stars")
+        print(f"  step: find_stars DONE  found {len(solver.stars)} stars", flush=True)
+        print("  step: solve_wcs START", flush=True)
+
         # helper.print_on_line(f", found {len(solver.stars)} stars")
         w = solver.solve_wcs(star_table, plotting=plotting)
+        print("  step: solve_wcs RETURNED", flush=True)
+
         if w is None:
+            print("  step: solve_wcs returned None", flush=True)
             continue
         # needed for photometric calibration
+        print("  step: extract_star_data START", flush=True)
         star_data = solver.extract_star_data(w)
+        print("  step: extract_star_data DONE", flush=True)
+        print("  step: write_solved_frame START", flush=True)
         io_data.write_solved_frame(solver.path, star_data, w)
-
+        print("  step: write_solved_frame DONE", flush=True)
 @helper.functimer
 #@helper.profiler(n=20)
 def plate_solve_all(data: helper.ScienceFrameList, force_solve: dict | bool=False, 
@@ -372,7 +392,7 @@ def plate_solve_all(data: helper.ScienceFrameList, force_solve: dict | bool=Fals
 
     '''
     if filter_kwargs is None:
-        name = data[0].path.split("\\")[-3]
+        name = str(data[0].path).split(os.sep)[-3]
         filter_kwargs = helper.get_dataset(name, "find_stars")
 
     filters = data.unique("filter")

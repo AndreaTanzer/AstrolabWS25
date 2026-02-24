@@ -8,12 +8,9 @@ Created on Tue Feb 10 18:37:36 2026
 import numpy as np
 import pandas as pd
 from astropy import wcs, table, time
-import astropy.units as u
 from astropy.stats import sigma_clipped_stats
 from astroquery.simbad import Simbad
-from astroquery.vizier import Vizier
 from photutils import psf, aperture
-# from photutils.aperture import CircularAperture
 from matplotlib.pyplot import close
 from timeit import default_timer
 import warnings
@@ -41,7 +38,7 @@ def calc_zero_point(mag, flux, zp_default=np.nan):
 
     """
     zps = mag + 2.5*np.log10(flux)
-    zp_mean, zp_median, zp_std = sigma_clipped_stats(zps, sigma=2)
+    zp_mean, _, _ = sigma_clipped_stats(zps, sigma=2)
     if np.isnan(zp_mean):
         # none of the detected stars have brightness data in the requested band
         zp_mean = zp_default 
@@ -251,6 +248,7 @@ if __name__ == "__main__":
     # TODO: move this part into a function, loop over all filters
     # read data
     data = io_data.read_folder(directory / "Solved")
+
     phot_table = band_photometry(data, band, main_id=name, r_in=1, r_out=2)
     df = phot_table.to_pandas()
     # create 5min rolling average of magnitude, save it to column mag_5m
@@ -261,7 +259,6 @@ if __name__ == "__main__":
     plot.plot([df["t"], df["mag"], df["mag_5m"]], ylabel="mag", linestyle=["None", "-"], 
               marker=[".", "None"], legend=["single measurements", "5 min running average"],
               fname=repo_root / "figs" / fname)
-
 
     print('Execution Time: %.2f s' % (default_timer()-starttime))
     

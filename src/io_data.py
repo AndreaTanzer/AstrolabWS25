@@ -8,11 +8,8 @@ Created on Tue Jan 20 17:14:45 2026
 import os
 import glob
 from pathlib import Path
-import warnings
 import numpy as np
 from astropy.io import fits
-from astropy.utils.exceptions import AstropyWarning
-
 import helper
 
 def read_folder(directory, sci_frame=True):
@@ -38,7 +35,7 @@ def read_folder(directory, sci_frame=True):
         frames = helper.ScienceFrameList()
     else:
         frames = helper.CalibFrameList()
-    files = glob.glob(os.path.join(directory, "*.[Ff][Ii][Tt]*"))
+    files = _list_fits_files(directory)
     for fname in files:
         with fits.open(fname) as hdul:
             header = hdul[0].header.copy()
@@ -130,6 +127,7 @@ def write_reduced_frame(reduced, header, path, new_object_name):
     hdr = header.copy()
     if new_object_name is not None:
         hdr["OBJECT"] = new_object_name
+
     hdr["IMAGETYP"] = ("Reduced Light Frame", "Pipeline-processed")
     hdr["HISTORY"] = "Bias subtracted"
     hdr["HISTORY"] = "Dark current subtracted"
@@ -202,7 +200,16 @@ def write_header_failed(outpath):
     return 
 
 
+def _list_fits_files(directory: str) -> list[str]:
+    """
+    Internal helper: return a deterministic list of FITS-like files in a folder.
+    Keeps file discovery logic in one place.
+    """
+    pattern = os.path.join(directory, "*.[Ff][Ii][Tt]*")
+    return sorted(glob.glob(pattern))
+
 if __name__ == "__main__":
     directory = helper.get_repo_root() / "data/20260114_lab/"
     sci, hdus = read(directory)
     pass
+

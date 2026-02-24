@@ -1,177 +1,160 @@
 # -*- coding: utf-8 -*-
-"""
-Created on Mon Feb 16 20:18:20 2026
-
-@author: chris
-"""
-
-import os 
-from concurrent.futures import ProcessPoolExecutor
-import matplotlib.pyplot as plt
+import os
 import logging
+import warnings
+from concurrent.futures import ProcessPoolExecutor
+from pathlib import Path
+import matplotlib.pyplot as plt
+from astropy.utils.exceptions import AstropyWarning
 
 import helper
 import io_data
 from plate_solving import PlateSolver
 
-
-# used locally by each worker process
+# Global variables for worker memory
 _worker_star_table = None
 _worker_alt_star_table = None
 
-def solve_single_frame_task(frame, find_kwargs, force_solve):
-    """
-    The actual task run for every image.
-    """
-    global _worker_star_table, _worker_alt_star_table
-    name = str(frame.path).split(os.sep)[-1]
-    solver = PlateSolver(frame)
-    already_done = solver.is_plate_solved or solver.failed_plate_solving
-    if already_done and not force_solve:
-        # already plate solved, no need to calculate anything
-        # or solving failed before
-        return None  # f"SKIP: {name}"
-    
-    # 1. Source Detection
-    solver.find_stars(**find_kwargs)
-    n_stars = len(solver.stars) if solver.stars else 0
-    new_kwargs = dict(thresh=int(find_kwargs["thresh"]), 
-                      peaklo=int(find_kwargs["peaklo"]))
-    # reduce number of stars if there are more than 30
-    for i in range(3):
-        if n_stars < 31:
-            break
-        new_kwargs["thresh"] *= 1.5
-        new_kwargs["peaklo"] *= 1.5
-        solver.find_stars(**new_kwargs)
-        n_stars = len(solver.stars) if solver.stars else 0
-    # increase number of stars if there are less than 11
-    for i in range(3):
-        if n_stars > 10:
-            break
-        new_kwargs["thresh"] *= 0.7
-        new_kwargs["peaklo"] *= 0.7
-        solver.find_stars(**new_kwargs)
-        n_stars = len(solver.stars) if solver.stars else 0
-    if n_stars == 0:
-        return f"FAIL: {name} (0 stars)"
-    # 2. Solving
-    w = solver.solve_wcs(_worker_star_table)
-    using_alt = ""
-    if w is None:
-        w = solver.solve_wcs(_worker_alt_star_table)
-        using_alt += "using alt star_table"
-    if w is None:
-        io_data.write_header_failed(solver.path)
-        return f"FAIL: {name} ({len(solver.stars)} stars) - Couldn't solve"
-    # 3. Use coordinates to search at all star positions with weaker pos constraints,
-    #    extract magnitudes photometric calibration
-    star_data = solver.extract_star_data(w)
-    io_data.write_solved_frame(solver.path, star_data, w)
-    return f"DONE: {name} ({len(solver.stars)} stars) {using_alt}"
-
 def init_worker(main_table, alt_table):
     """
-    This runs ONCE per CPU core when the process starts.
-    It sets the Gaia table in the worker's global memory.
+    Sets the reference tables once per worker process to avoid pickling overhead.
     """
     global _worker_star_table, _worker_alt_star_table
     _worker_star_table = main_table
     _worker_alt_star_table = alt_table
-    # Suppress No sources found warnings
-    # warnings.filterwarnings('ignore', category=UserWarning, append=True)
-    # Suppress Gaia password warnings
+    
+    # Silence overhead chatter
     logging.getLogger('astroquery').setLevel(logging.ERROR)
+    warnings.simplefilter("ignore", category=AstropyWarning)
+
+def solve_single_frame_task(frame, find_kwargs, force_solve):
+    """
+    Unified task: Uses recursive thresholding and dual-catalog fallbacks.
+    """
+    global _worker_star_table, _worker_alt_star_table
+    name = frame.path.name
+    solver = PlateSolver(frame)
+
+    # 1. Check if already done
+    if (solver.is_plate_solved or solver.failed_plate_solving) and not force_solve:
+        return None 
+
+    try:
+        # 2. Recursive Star Detection (Your Logic)
+        solver.find_stars(**find_kwargs)
+        n_stars = len(solver.stars) if solver.stars else 0
+        
+        # Create a copy to modify
+        current_params = dict(thresh=float(find_kwargs.get("thresh", 200)), 
+                              peaklo=float(find_kwargs.get("peaklo", 5)))
+        
+        # Adjust if too many ( > 30)
+        for _ in range(3):
+            if n_stars <= 30: break
+            current_params["thresh"] *= 1.5
+            current_params["peaklo"] *= 1.5
+            solver.find_stars(**current_params)
+            n_stars = len(solver.stars) if solver.stars else 0
+            
+        # Adjust if too few ( < 11)
+        for _ in range(3):
+            if n_stars >= 11: break
+            current_params["thresh"] *= 0.7
+            current_params["peaklo"] *= 0.7
+            solver.find_stars(**current_params)
+            n_stars = len(solver.stars) if solver.stars else 0
+
+        if n_stars == 0:
+            return f"FAIL: {name} (0 stars detected)"
+
+        # 3. Solving with Fallback (Your Logic)
+        w = solver.solve_wcs(_worker_star_table)
+        status_suffix = ""
+        
+        if w is None and _worker_alt_star_table is not None:
+            w = solver.solve_wcs(_worker_alt_star_table)
+            status_suffix = " (using alt table)"
+
+        if w is None:
+            io_data.write_header_failed(solver.path)
+            return f"FAIL: {name} ({n_stars} stars) - Solve failed"
+
+        # 4. Final Extraction and IO
+        star_data = solver.extract_star_data(w)
+        io_data.write_solved_frame(solver.path, star_data, w)
+        return f"DONE: {name} ({n_stars} stars){status_suffix}"
+
+    except Exception as e:
+        return f"ERR: {name} - {str(e)}"
 
 @helper.functimer
-def plate_solve_all(data: helper.ScienceFrameList, force_solve: bool=False, 
-                    filter_kwargs: dict=None):
-    '''
-    Add WCS information to header. Includes coordinates, orientation, scale
-
-    Parameters
-    ----------
-    data : helper.ScienceFrameList
-        science frames containing data.
-    force_solve : dict, bool, optional
-        specify if all filters or a specific filter must be solved. The default is False
-    filter_kwargs : dict, optional
-        
-
-    Returns
-    -------
-    None.
-
-    '''
-    # get find_stars kwargs for each filter
-    if filter_kwargs is None:
-        path_str = str(data[0].path)
-        name = path_str.split(os.sep)[-3]
-        filter_kwargs = helper.get_dataset(name, "find_stars")
+def plate_solve_all(data: helper.ScienceFrameList, force_solve=False, filter_kwargs=None):
+    """
+    Orchestrator using Chris's structural breakdown but your dual-query logic.
+    """
+    # 1. Setup Settings
+    filter_kwargs = _get_filter_kwargs(data, filter_kwargs)
     
-    # 2. Global Star Query
-    print("Fetching Global Reference catalog...")
-    temp_solver = PlateSolver(data[0])
-    for j in range(10):  # randomly throws errors
-        try:  # if larger than 2r, star wouldnt be in FOV
-            viz_table = temp_solver.query_vizier(2*data[0].radius)
-            gaia_table = temp_solver.query_gaia(1.5*data[0].radius)  # 1.5*
-            break
-        except Exception as e:
-            if j == 9:
-                raise e
+    # 2. Global Star Query (Restored your Vizier + Gaia logic)
+    main_table, alt_table = _query_reference_catalogs(data)
     
-    # force_solve for each filter, defaulting to False if not specified
+    # 3. Build tasks
     filters = data.unique("filter")
-    force_dict = {}
+    force_dict = _build_force_dict(filters, force_solve)
+    tasks = _build_tasks(data, filter_kwargs, force_dict)
+    
+    # 4. Run Pool
+    _run_pool(tasks, main_table, alt_table)
+
+# --- Chris's Helper Structure (Modified to support your fallback) ---
+
+def _query_reference_catalogs(data):
+    print("Fetching Global Reference catalogs (Gaia & VizieR)...")
+    temp_solver = PlateSolver(data[0])
+    for j in range(10):
+        try:
+            # We fetch both as you had in your HEAD
+            viz = temp_solver.query_vizier(2.0 * data[0].radius)
+            gaia = temp_solver.query_gaia(1.5 * data[0].radius)
+            return gaia, viz
+        except Exception as e:
+            if j == 9: raise e
+    return None, None
+
+def _get_filter_kwargs(data, filter_kwargs):
+    if filter_kwargs is not None: return filter_kwargs
+    name = str(data[0].path).split(os.sep)[-3]
+    return helper.get_dataset(name, "find_stars")
+
+def _build_force_dict(filters, force_solve):
     if isinstance(force_solve, bool):
-        for filt in filters:
-            force_dict[filt] = force_solve
-    else:
-        for filt in filters:
-            if filt in force_solve:
-                force_dict[filt] = force_solve[filt]
-            else:
-                force_dict[filt] = False
-                
-    # Create task list for all filters
+        return {filt: force_solve for filt in filters}
+    return {filt: force_solve.get(filt, False) for filt in filters}
+
+def _build_tasks(data, filter_kwargs, force_dict):
     all_tasks = []
     for frame in data:
         filt = frame.get("filter")
-        # Match the specific kwargs for this frame's filter
-        current_kwargs = filter_kwargs.get(filt, {})
-        # Check force_solve logic for this specific filter
-        should_force = force_dict.get(filt, False)
-        all_tasks.append((frame, current_kwargs, should_force))
-    
-    # Launch 1 pool for entire dataset
-    num_workers = max(1, os.cpu_count() - 1)
-    print(f"Launching pool for {len(all_tasks)} frames across {num_workers} cores...")
-    with ProcessPoolExecutor(max_workers=num_workers, initializer=init_worker, 
-                             initargs=(gaia_table, viz_table)) as executor:
-        # We pass the pre-matched kwargs directly into the submit call
-        futures = [executor.submit(solve_single_frame_task, t[0], t[1], t[2]) for t in all_tasks]
-        
-        for future in futures:
-            output = future.result()
-            if output is not None:
-                print(output)
+        all_tasks.append((frame, filter_kwargs.get(filt, {}), force_dict.get(filt, False)))
+    return all_tasks
 
+def _run_pool(tasks, main_table, alt_table):
+    num_workers = max(1, os.cpu_count() - 1)
+    print(f"Launching pool for {len(tasks)} frames across {num_workers} cores.")
+    
+    with ProcessPoolExecutor(max_workers=num_workers, 
+                             initializer=init_worker, 
+                             initargs=(main_table, alt_table)) as executor:
+        
+        futures = [executor.submit(solve_single_frame_task, *t) for t in tasks]
+        
+        for i, future in enumerate(futures, start=1):
+            res = future.result()
+            if res: print(f"[{i}/{len(tasks)}] {res}")
 
 if __name__ == "__main__":
     plt.close("all")
-    directory="../data/20251104_lab"
-    # directory="../data/20260114_lab"
-    # read data
-    data = io_data.read_folder(directory+"/Reduced")
+    # Update this path to your current test directory
+    directory = "../data/20251104_lab"
+    data = io_data.read_folder(directory + "/Reduced")
     plate_solve_all(data, force_solve=True)
-    
-    # example usage
-    # data = io_data.read_folder(directory+"/Solved")
-    # frame = data.filter(filter="B")[5]
-    # stars = frame.load_stars()  
-    # xypos = np.transpose((stars['xcentroid'], stars['ycentroid']))
-    # w = wcs.WCS(frame.header)
-    
-
-

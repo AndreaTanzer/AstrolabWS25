@@ -85,7 +85,7 @@ def imshow(data, **imshow_on_ax_kwargs):
     plt.show()
 
 def imshow_coords(data, wcs_object, stars=None, **imshow_on_ax_kwargs):
-    fig, ax = plt.subplots(subplot_kw=dict(projection=wcs_object))
+    _, ax = plt.subplots(subplot_kw=dict(projection=wcs_object))
     ax.grid(color="white", ls="dashed", alpha=0.3)
     ax.set(xlabel='Longitude', ylabel='Latitude')
     imshow_on_ax(ax, data)
@@ -156,7 +156,7 @@ def hist(data, **kwargs):
     None.
 
     '''
-    fig, ax = plt.subplots()
+    _, ax = plt.subplots()
     hist_on_ax(ax, data, **kwargs)
     plt.show()
     
@@ -334,7 +334,7 @@ def plot(data: list[Sequence[float]],
         The plot is displayed and optionally saved to disk.
     '''
     
-    fig, ax = plt.subplots(figsize=figsize, dpi=dpi)  # figsize=(4, 3), dpi=100
+    _, ax = plt.subplots(figsize=figsize, dpi=dpi)  # figsize=(4, 3), dpi=100
     plt.xscale(scale[0])
     plt.yscale(scale[1])
     ax.set_title(
@@ -360,11 +360,6 @@ def plot(data: list[Sequence[float]],
             int(len(legend)/len(linestyle))
     if len(fillErr) != len(legend):
         fillErr = fillErr*int(len(legend)/len(fillErr))
-    cmap = plt.get_cmap('tab10')  # tab10
-    if ncolors is not None:
-        colors = [cmap(i) for i in range(ncolors)]*(len(data)//ncolors+1)
-    else:
-        colors = [cmap(i) for i in range(len(data))]
     for i in range(len(data)-1):
         plt.plot(data[0], data[i+1], marker=marker[i],
                  linestyle=linestyle[i], label=legend[i])  # plotting data
@@ -471,7 +466,6 @@ def reduction(frame, reduced, color, positions, ysize, figdir):
              fname=fname)
     
 def plot_stars(im, stars, title=""):
-    ny, nx = im.shape
     fig, ax = plt.subplots(figsize=(8, 6))
     ax.scatter(stars['xcentroid'], stars['ycentroid'], s=50, edgecolors='r', 
                facecolors='none', label='Detected')
