@@ -210,7 +210,7 @@ class PlateSolver:
         # check if enough detected stars and Gaia stars are available
         if nsource < 5 or ntarget < 5:
             if plotting:
-                plot_stars(self.im, self.stars, title=f"{self.path}")
+                plot_stars(self.im, self.stars, title=f"{self.path.name}")
             # print(f"Too few source points: {nsource} or target points: {ntarget}")
             io_data.write_header_failed(self.path)
             return None
@@ -226,7 +226,7 @@ class PlateSolver:
         except aa.MaxIterError:
             print("solve_wcs: aa.find_transform MaxIterError", flush=True)
             if plotting:
-                plot_stars(self.im, self.stars, title=f"{self.path}")
+                plot_stars(self.im, self.stars, title=f"{self.path.name}")
             # print(f"Astroalign failed for {self.path}, too few stars, cloudy?")
             io_data.write_header_failed(self.path)
             return None
@@ -247,7 +247,7 @@ class PlateSolver:
         rms = np.sqrt(np.mean((reprojected_x - source_list[:,0])**2 + (
                                 reprojected_y - source_list[:,1])**2))
         if rms > 2:  # px
-            print(f"{self.path}")
+            print(f"{self.path.name}")
             print(f"RMS Fit Error: {rms:.3f} pixels")
             rotation = np.degrees(np.arctan2(w_final.wcs.cd[0, 1], w_final.wcs.cd[1, 1]))
             scale_fit = wcs.utils.proj_plane_pixel_scales(w_final)[0] * 3600
@@ -256,8 +256,6 @@ class PlateSolver:
             print(f"Field Rotation: {rotation:.2f}°")
             print(f"Measured Scale: {scale_fit:.4f} arcsec/px")
             print(f"Focal Length Check: {4500 * (self.frame.scale / scale_fit):.1f} mm")
-        # io_data.write_solved_frame(self.path, self.stars["xcentroid", "ycentroid"], w_final)
-        # io_data.write_solved_frame(self.path, star_table, w_final)
         return w_final
 
     def get_star_coords(self, w: wcs.wcs.WCS) -> np.array:
@@ -391,21 +389,12 @@ def plate_solve_all(data: helper.ScienceFrameList, force_solve: dict | bool=Fals
     None.
 
     '''
-    if filter_kwargs is None:
-        name = str(data[0].path).split(os.sep)[-3]
-        filter_kwargs = helper.get_dataset(name, "find_stars")
+    filter_kwargs = helper.get_filter_kwargs(data, filter_kwargs)
+    filters = data.unique("filter")
+    force_dict = helper.build_force_dict(filters, force_solve)
 
     filters = data.unique("filter")
-    force_dict = {}
-    if isinstance(force_solve, bool):
-        for filt in filters:
-            force_dict[filt] = force_solve
-    else:
-        for filt in filters:
-            if filt in force_solve:
-                force_dict[filt] = force_solve[filt]
-            else:
-                force_dict[filt] = False
+
     for filt in filters:
         current_kwargs = filter_kwargs.get(filt, {})
         if printing is True:

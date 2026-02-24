@@ -34,7 +34,6 @@ def create_master_frames(calib):
     mflat : numpy.ndarray
         master flat.
     '''
-    print("Creating Master Frame")
     # Step 1, create master bias
     mbias = np.median(calib["bias"].stack_data(), axis=0)
     
@@ -130,12 +129,12 @@ def reduce_all(scis, mbias, mdark_rate, mflat, directory, new_object_name=None,
 
     for color in scis.unique("filter"):
         frames = scis.filter(filter=color)
-        print(f"Reducing filter {color}: n={len(frames)}")
-
+        nframes = len(frames)
         if plotting is True:
             _plot_first_frame(frames, mbias, mdark_rate, mflat, directory, color, cutout_height)
             
         for i, frame in enumerate(frames):
+            helper.print_statusline(f"Reducing filter {color}: {i+1}/{nframes}")
             # Make Filepath
             hdr = frame.header.copy()
             ID = hdr.get("OBJECT", "UNKNOWN")
@@ -148,13 +147,14 @@ def reduce_all(scis, mbias, mdark_rate, mflat, directory, new_object_name=None,
             # reduce image
             reduced = reduce(frame, mbias, mdark_rate, mflat)
             write_reduced_frame(reduced, hdr, path, new_object_name)
+        print()
     return
 
 def data_reduction(indir, rename_HAT=False, **reduce_all_kwargs):
-    print("Starting Data reduction")
     scis, calibration = read(indir)
     mbias, mdark_rate, mflat = create_master_frames(calibration)
     new_object_name = "HAT-P-32" if rename_HAT else None
+    print("Starting Data reduction")
     reduce_all(scis, mbias, mdark_rate, mflat, indir, new_object_name=new_object_name, **reduce_all_kwargs)
 
 def _get_reduced_outdir(directory: str) -> str:

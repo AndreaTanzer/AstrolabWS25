@@ -141,7 +141,7 @@ def aperture_photometry(frame, zp_default, fwhm=10, r_in=2, r_out=3,
     if star_pos is None:
         raise AttributeError("frame has no stars extension")
     if plotting is True:
-        title = frame.path + ", plate solved"
+        title = frame.path.name + ", plate solved"
         plot.imshow_coords(im, star_pos["w"], star_pos["stars"], title=title)
     
     if calc_fwhm is True:

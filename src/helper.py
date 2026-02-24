@@ -33,7 +33,7 @@ class ScienceFrame:
     filter. Load data using load
     '''
     def __init__(self, path, header, focal_length: float=4500):
-        self.path = path
+        self.path = Path(path)
         self.header = header
         self.focal_length = focal_length
     
@@ -111,7 +111,7 @@ class CalibFrame:
     Stores path and header; data is loaded on demand.
     """
     def __init__(self, path, header, bin_size=None):
-        self.path = path
+        self.path = Path(path)
         self.header = header
         self.bin_size = bin_size  # needed to bin flats
         
@@ -292,6 +292,18 @@ def slugify(value, allow_unicode=False):
         value = unicodedata.normalize('NFKD', value).encode('ascii', 'ignore').decode('ascii')
     value = re.sub(r'[^\w\s-]', '', value.lower())
     return re.sub(r'[-\s]+', '-', value).strip('-_')
+
+def get_filter_kwargs(data, filter_kwargs):
+    # go up to folders to find labname. Either '20251104_lab' or '20260114_lab'
+    # Return initial kwargs for find_stars tailored to each filter in each frame
+    if filter_kwargs is not None: return filter_kwargs
+    name = data[0].path.parent.parent.name
+    return get_dataset(name, "find_stars")
+
+def build_force_dict(filters, force_solve):
+    if isinstance(force_solve, bool):
+        return {filt: force_solve for filt in filters}
+    return {filt: force_solve.get(filt, False) for filt in filters}
     
 def get_dataset(labname, kind):
     dataset = DATASETS.get(labname)
