@@ -218,7 +218,7 @@ def plot(data: list[Sequence[float]],
          xlabel: str = None,
          ylabel: str = None,
          legend: list[str | None] = [None] * 5, 
-         fName: str = None,
+         fname: str = None,
          # --- Advanced options ---
          # text
          text: Sequence[Any] | Sequence[Sequence[Any]] = None,
@@ -264,7 +264,7 @@ def plot(data: list[Sequence[float]],
     legend : list of str or None, optional
         Labels for the plotted data series. Length should match ``len(data) - 1``.
         Entries may be ``None`` to omit individual legend items.
-    fName : str, optional
+    fname : str, optional
         If provided, the plot is saved to this file name.
     
     Advanced Parameters
@@ -420,8 +420,8 @@ def plot(data: list[Sequence[float]],
         #            fancybox=True, shadow=True, ncol=2, prop={'size': 8})
         plt.legend(loc=legendLoc)
         # loc=0-best, loc=1-rechts oben, loc=2-links oben, loc=3-links unten,loc=4-rechts unten,loc=5-rechts,loc=6-mitte links,loc=7-mitte rechts,loc=8-unten mitte,loc=9-oben mitte,loc=10-mitte
-    if fName != None:
-        plt.savefig(fName, dpi=dpi*resolution, bbox_inches='tight')
+    if fname != None:
+        plt.savefig(fname, dpi=dpi*resolution, bbox_inches='tight')
     plt.show()
 
 

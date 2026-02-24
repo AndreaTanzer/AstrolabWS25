@@ -58,8 +58,7 @@ def calc_magnitude(flux, zp):
     return mag
 
 # Not that many stars with magnitude data across bands, calibration fails at times
-def query_Simbad(vals_with_idx, band, radius_arcsec=5):
-    upload_table = table.Table(vals_with_idx, names=["idx", "ra", "dec"])
+def query_Simbad(upload_table, band, radius_arcsec=5):
     radius_deg = radius_arcsec/60**2  # cone search radius
     # cone search around position with given radius
     # obtain main_id, ra, dec, object_type, magnitude in given filter
@@ -88,27 +87,27 @@ def query_Simbad(vals_with_idx, band, radius_arcsec=5):
     df_brightest['idx'] = df['idx'].astype(int)
     return df_brightest
 
-def query_Simbad_id(vals_with_idx, band="G", radius_arcsec=10):
-    simbad_data = query_Simbad(vals_with_idx, band, radius_arcsec)
+def query_Simbad_id(upload_table, band="G", radius_arcsec=10):
+    simbad_data = query_Simbad(upload_table, band, radius_arcsec)
     df = simbad_data[["idx", "main_id"]]
     return df
 
-def get_star_pos(frame):
-    stars = frame.load_stars()
+def get_star_pos(stars, header):
     if stars is None:
         return None
     xypos = np.transpose((stars['xcentroid'], stars['ycentroid']))
-    w = wcs.WCS(frame.header)
+    w = wcs.WCS(header)
     # 0 because python starts counting at 0
     star_coords = w.all_pix2world(xypos, 0)
     ra, dec = star_coords[:, 0], star_coords[:, 1]
     pos = dict(stars=stars, w=w, xypos=xypos, ra=ra, dec=dec)
     return pos
 
-def get_coords_with_idx(pos):
+def create_upload_table(pos):
     idx = np.arange(pos["ra"].size) + 1
     coords = np.vstack([idx, pos["ra"], pos["dec"]]).T
-    return coords
+    upload_table = table.Table(coords, names=["idx", "ra", "dec"])
+    return upload_table
 
 def aperture_photometry(frame, zp_default, fwhm=10, r_in=2, r_out=3, 
                         plotting=False, calc_fwhm=False):
@@ -138,9 +137,10 @@ def aperture_photometry(frame, zp_default, fwhm=10, r_in=2, r_out=3,
     '''
     # load data
     im = frame.load() 
-    
+    stars = frame.load_stars()
+    band = frame.get("filter")
     # construct coordinate system and plot
-    star_pos = get_star_pos(frame)
+    star_pos = get_star_pos(stars, frame.header)
     if star_pos is None:
         raise AttributeError("frame has no stars extension")
     if plotting is True:
@@ -171,22 +171,23 @@ def aperture_photometry(frame, zp_default, fwhm=10, r_in=2, r_out=3,
     phot_table["dec"] = star_pos["dec"]
 
     # calibrate image
-    coords_with_idx = get_coords_with_idx(star_pos)
-    simbad_data = query_Simbad(coords_with_idx, frame.get("filter"))
-    flux_series = pd.Series(phot_table["flux"])
-    flux_series = flux_series.loc[flux_series>0]
-    simbad_data["flux"] = simbad_data["idx"].map(flux_series)
-    # restrict to sources that have positive flux after background subtraction
-    simbad_existent = simbad_data.loc[simbad_data["flux"]>0]
-    # Calibrate image using sources
-    zp, default_flag = calc_zero_point(simbad_existent["mag"], simbad_existent["flux"], zp_default)
+    upload_table = create_upload_table(star_pos)
+    # simbad_data = query_Simbad(upload_table, frame.get("filter"))
+    # flux_series = pd.Series(phot_table["flux"])
+    # flux_series = flux_series.loc[flux_series>0]
+    # simbad_data["flux"] = simbad_data["idx"].map(flux_series)
+    # # restrict to sources that have positive flux after background subtraction
+    # simbad_existent = simbad_data.loc[simbad_data["flux"]>0]
+    # # Calibrate image using sources
+    # zp, default_flag = calc_zero_point(simbad_existent["mag"], simbad_existent["flux"], zp_default)
+    zp, default_flag = calc_zero_point(stars[f"{band}mag"], phot_table["flux"])
     phot_table["default_zp"] = default_flag
     # Calculate magnitudes from flux using zero point
     phot_table["mag"] = calc_magnitude(phot_table["flux"], zp)
     phot_table["mag"].format = "{:.2f}"
     # -------------------------------------------------------------------------
     # Get main_id of stars
-    ids = query_Simbad_id(coords_with_idx)
+    ids = query_Simbad_id(upload_table)
     phot_df = phot_table.to_pandas()
     # drop sources without Gaia G magnitude
     merged_df = phot_df.merge(ids, on="idx", how="right")
@@ -211,7 +212,8 @@ def extract_value(table, value, index="t", column="idx"):
     matrix = df.pivot(index=index, columns=column, values=value)
     return matrix
 
-def band_photometry(data, band, main_id="V* RR Lyr", verbose=True, **phot_kwargs):
+@helper.functimer
+def band_photometry(data, band, main_id="V* RR Lyr", verbose=False, **phot_kwargs):
     phot_tables = []
     data_band = data.filter(filter=band)
     zp_prev = np.nan
@@ -237,22 +239,29 @@ def band_photometry(data, band, main_id="V* RR Lyr", verbose=True, **phot_kwargs
     return phot_target
 
 if __name__ == "__main__":
+    # TODO: Move this part into helper.get_dataset
     starttime = default_timer()
     close("all")
     repo_root = get_repo_root()
-    labs = {"RR_Lyrae": "20251104_lab", "Transit": "20260114_lab"}
-    directory = repo_root / "data" / labs["RR_Lyrae"]
+    labs = {"V* RR Lyr": "20251104_lab", "HAT-P-32": "20260114_lab"}
+    name = "HAT-P-32"
+    band = "V"
+    directory = repo_root / "data" / labs[name]
     
+    # TODO: move this part into a function, loop over all filters
     # read data
     data = io_data.read_folder(directory / "Solved")
-    # rr_lyrae = band_photometry(data, "V", r_in=1, r_out=2)
-    #small_table = get_common_stars(rr_lyrae)
-    #flux = extract_value(small_table, "aperture_sum")
-    
-    star_pos = get_star_pos(data[0])
-    coords_with_idx = get_coords_with_idx(star_pos)
-    band = data[0].get("filter")
-    query_Vizier(coords_with_idx, band)
+    phot_table = band_photometry(data, band, main_id=name, r_in=1, r_out=2)
+    df = phot_table.to_pandas()
+    # create 5min rolling average of magnitude, save it to column mag_5m
+    df = df.merge(df.set_index("t").rolling("5min")["mag"].mean().rename("mag_5m"), 
+                  left_on=["t"], right_index=True)
+    # convert name to valid filename (cant use *)
+    fname = helper.slugify(f"{name}_{band}_photometry")
+    plot.plot([df["t"], df["mag"], df["mag_5m"]], ylabel="mag", linestyle=["None", "-"], 
+              marker=[".", "None"], legend=["single measurements", "5 min running average"],
+              fname=repo_root / "figs" / fname)
+
 
     print('Execution Time: %.2f s' % (default_timer()-starttime))
     

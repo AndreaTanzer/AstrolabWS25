@@ -82,7 +82,8 @@ class PlateSolver:
         finder = detection.DAOStarFinder(thresh, fwhm, roundhi=roundhi, 
                                          sharplo=sharplo, sharphi=sharphi)
         stars = finder.find_stars(im_filtered)  # None if no stars found
-        assert stars is not None
+        if stars is None:
+            return None
         stars = stars[stars["peak"] > peaklo]  # exclude very low contrast stars
         stars.sort("xcentroid")
         # format cols in output (just for convenience)
@@ -94,7 +95,6 @@ class PlateSolver:
             print(f"found {n_stars} stars")
         stars.sort("mag") # astroquery needs brightest stars first
         self.stars = stars
-        assert n_stars > 5
     
     def query_gaia(self, radius: u.quantity.Quantity, mag_limit: float=13,
                    n_max: int=200):
@@ -139,13 +139,15 @@ class PlateSolver:
         return gaia_table[:n_max]
     
     def query_vizier(self, radius: u.quantity.Quantity, mag_limit: float=13,
-                     n_max: int=200):
+                     n_max: int=300):
         viz = Vizier(columns=["UCAC4", "_RAJ2000", "_DEJ2000", "Bmag", "Vmag", "rmag", "imag"],
                      column_filters={"Vmag": f"<{mag_limit}"}, catalog="I/322A",
-                     row_limit=n_max)
+                     row_limit=-1)
         result = viz.query_region(self.frame.coord, radius=2*radius)[0]
         result.rename_columns(["_RAJ2000", "_DEJ2000"], ["ra", "dec"])
-        return result
+        # otherwise sorted by id~coords, throws out bright
+        result.sort("Vmag")
+        return result[:n_max]
     
     def query_around_vizier(self, w, radius_arcsec=20, mag_limit: float=13):
         coords_with_idx = self.get_star_coords(w)
@@ -200,7 +202,7 @@ class PlateSolver:
            (star_px_y > -ny*0.5) & (star_px_y < ny*1.5)
         source_pts = np.transpose((self.stars['xcentroid'], self.stars['ycentroid']))
         source_pts = source_pts[:max_stars]
-        target_pts = np.transpose((star_px_x[mask], star_px_y[mask]))
+        target_pts = np.transpose((star_px_x[mask], star_px_y[mask]))  # [:max_stars]
         nsource = len(source_pts)
         ntarget = len(target_pts)
         # check if enough detected stars and Gaia stars are available
@@ -213,7 +215,8 @@ class PlateSolver:
         try:
             transf, (source_list, target_list) = aa.find_transform(source_pts, target_pts)
         except aa.MaxIterError:
-            plot_stars(self.im, self.stars, title=f"{self.path}")
+            if plotting is True:
+                plot_stars(self.im, self.stars, title=f"{self.path}")
             # print(f"Astroalign failed for {self.path}, too few stars, cloudy?")
             io_data.write_header_failed(self.path)
             return None
@@ -258,7 +261,7 @@ class PlateSolver:
         result = self.query_around_vizier(w)
         # Add centroids
         result["xcentroid"] = self.stars[result["_q"]-1]["xcentroid"]
-        result["ycentroid"] = self.stars[result["_q"]-1]["xcentroid"]
+        result["ycentroid"] = self.stars[result["_q"]-1]["ycentroid"]
         # Drop duplicates, keeping star closest to input coords
         df = result.to_pandas()
         # calc dist between search coords and found coords
@@ -283,8 +286,8 @@ def plot_stars(im, stars, title=""):
 
 # @helper.functimer
 # @helper.profiler(n=50)
-def plate_solve_filter(data: helper.ScienceFrameList, force_solve=False, 
-                       plotting=False, **find_kwargs):
+def plate_solve_filter(all_data: helper.ScienceFrameList, filt: str, 
+                       force_solve=False, plotting=False, **find_kwargs):
     '''
     Plate solve all frames in data
 
@@ -307,27 +310,29 @@ def plate_solve_filter(data: helper.ScienceFrameList, force_solve=False,
     None.
 
     '''
+    data = all_data.filter(filter=filt)
     n_frames = len(data)
     star_table = None
+    init_solver = PlateSolver(data[0])
+    # find gaia stars once, than match each image to those stars
+    if star_table is None:
+        for i in range(10):  # randomly throws errors
+            try:  # if larger than 2r, star wouldnt be in FOV
+                # star_table = solver.query_gaia(2*d.radius)
+                star_table = init_solver.query_gaia(2*data[0].radius)
+                star_table.sort(f"{filt}mag")
+                break
+            except Exception as e:
+                if i == 9:
+                    raise e
+                continue
     for i, d in enumerate(data): 
         solver = PlateSolver(d)
         already_done = solver.is_plate_solved or solver.failed_plate_solving
         if already_done and not force_solve:
             # already plate solved, no need to calculate anything
             # or solving failed before
-            continue
-        # find gaia stars once, than match each image to those stars
-        if star_table is None:
-            for j in range(10):  # randomly throws errors
-                try:  # if larger than 2r, star wouldnt be in FOV
-                    # star_table = solver.query_gaia(2*d.radius)
-                    star_table = solver.query_vizier(2*d.radius)
-                    break
-                except Exception as e:
-                    if j == 9:
-                        raise e
-                    continue
-                
+            continue                
         print(f"plate solving {i+1}/{n_frames}", end="")
         try:
             solver.find_stars(**find_kwargs)
@@ -384,12 +389,12 @@ def plate_solve_all(data: helper.ScienceFrameList, force_solve: dict | bool=Fals
     for filt in filters:
         current_kwargs = filter_kwargs.get(filt, {})
         if printing is True:
-            plate_solve_filter(data.filter(filter=filt), 
+            plate_solve_filter(data, filt, plotting=False,
                                force_solve=force_dict[filt], 
                                **current_kwargs)
         else:
             with helper.HiddenPrints():
-                plate_solve_filter(data.filter(filter=filt), plotting=True,
+                plate_solve_filter(data.filter, filt, plotting=False,
                                    force_solve=force_dict[filt], 
                                    **current_kwargs)
 
@@ -409,11 +414,11 @@ def plate_solve_all(data: helper.ScienceFrameList, force_solve: dict | bool=Fals
 if __name__ == "__main__":
     plt.close("all")
     directory="../data/20251104_lab"
-    directory="../data/20260114_lab"
+    # directory="../data/20260114_lab"
     # read data
     data = io_data.read_folder(directory+"/Reduced")
     # plate_solve_all(data, force_solve=True, printing=False)
-    plate_solve_filter(data.filter(filter="r"), force_solve=True)
+    plate_solve_filter(data, "B", force_solve=True)
     
     # example usage
     # data = io_data.read_folder(directory+"/Solved")

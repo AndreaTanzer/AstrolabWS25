@@ -7,6 +7,8 @@ Created on Sat Jan 24 21:36:16 2026
 
 import sys
 import os
+import re
+import unicodedata
 import numpy as np
 from astropy.io import fits
 from astropy.table import Table
@@ -274,6 +276,22 @@ def print_on_line(msg: str, ncols: int=int(1e3)):
     # go to the (start of the) previous line: \033[F
     # move along ncols: \033[{ncols}G
     print(f"\033[F\033[{ncols}G{msg}")
+    
+def slugify(value, allow_unicode=False):
+    """
+    Taken from https://github.com/django/django/blob/master/django/utils/text.py
+    Convert to ASCII if 'allow_unicode' is False. Convert spaces or repeated
+    dashes to single dashes. Remove characters that aren't alphanumerics,
+    underscores, or hyphens. Convert to lowercase. Also strip leading and
+    trailing whitespace, dashes, and underscores.
+    """
+    value = str(value)
+    if allow_unicode:
+        value = unicodedata.normalize('NFKC', value)
+    else:
+        value = unicodedata.normalize('NFKD', value).encode('ascii', 'ignore').decode('ascii')
+    value = re.sub(r'[^\w\s-]', '', value.lower())
+    return re.sub(r'[-\s]+', '-', value).strip('-_')
     
 def get_dataset(labname, kind):
     dataset = DATASETS.get(labname)
