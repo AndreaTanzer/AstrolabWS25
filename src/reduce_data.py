@@ -33,7 +33,6 @@ def create_master_frames(calib):
         master dark normalized to exposure time in seconds.
     mflat : numpy.ndarray
         master flat.
-
     '''
     print("Creating Master Frame")
     # Step 1, create master bias
@@ -84,7 +83,6 @@ def reduce(sci, mbias, mdark_rate, mflat):
     -------
     data : numpy.ndarray
         reduced science image.
-
     '''
     data = sci.load()
     data -= mbias  # Step 2
@@ -123,30 +121,30 @@ def reduce_all(scis, mbias, mdark_rate, mflat, directory, new_object_name=None,
     -------
     None.
 
+    Example
+    ------
+    positions = {"B": (1360, 1760), "V": (1300, 1680), "i": (1425, 1860), 
+                 "r": (1390, 1810), "u": (1370, 1775)}
     '''
-    # positions = {"B": (1360, 1760), "V": (1300, 1680), "i": (1425, 1860), 
-    #              "r": (1390, 1810), "u": (1370, 1775)}
-    outdir = os.path.join(os.path.abspath(os.path.expanduser(directory)), "Reduced")
-    os.makedirs(outdir, exist_ok=True)
-    for color in scis.unique("filter"):  # iterate over filters
+    outdir = _get_reduced_outdir(directory)
+
+    for color in scis.unique("filter"):
         frames = scis.filter(filter=color)
         print(f"Reducing filter {color}: n={len(frames)}")
+
         if plotting is True:
-            reduced = reduce(frames[0], mbias, mdark_rate, mflat)
-            name = os.path.basename(directory)
-            positions = helper.get_dataset(name, "centers")
-            plot.reduction(frames[0], reduced, color, positions, cutout_height, 
-                           figdir="../figs")
+            _plot_first_frame(frames, mbias, mdark_rate, mflat, directory, color, cutout_height)
             
-        for i, frame in enumerate(frames):  # iterate over images
+        for i, frame in enumerate(frames):
             # Make Filepath
             hdr = frame.header.copy()
             ID = hdr.get("OBJECT", "UNKNOWN")
             filename = f"{color}_{i+1:03}.{ID}.FIT"
             path = os.path.join(outdir, filename)
-            if os.path.exists(path) and not force_reduction:
-                # File already exists, no need to reduce
+
+            if _should_skip_reduction(path, force_reduction):
                 continue
+
             # reduce image
             reduced = reduce(frame, mbias, mdark_rate, mflat)
             write_reduced_frame(reduced, hdr, path, new_object_name)
@@ -159,3 +157,19 @@ def data_reduction(indir, rename_HAT=False, **reduce_all_kwargs):
     new_object_name = "HAT-P-32" if rename_HAT else None
     reduce_all(scis, mbias, mdark_rate, mflat, indir, new_object_name=new_object_name, **reduce_all_kwargs)
 
+def _get_reduced_outdir(directory: str) -> str:
+    outdir = os.path.join(os.path.abspath(os.path.expanduser(directory)), "Reduced")
+    os.makedirs(outdir, exist_ok=True)
+    return outdir
+
+def _should_skip_reduction(path: str, force_reduction: bool) -> bool:
+    return os.path.exists(path) and (not force_reduction)
+
+
+def _plot_first_frame(frames, mbias, mdark_rate, mflat, directory: str,
+                            color: str, cutout_height: int) -> None:
+    # keep behavior identical to current reduce_all plotting block
+    reduced = reduce(frames[0], mbias, mdark_rate, mflat)
+    name = os.path.basename(directory)
+    positions = helper.get_dataset(name, "centers")
+    plot.reduction(frames[0], reduced, color, positions, cutout_height, figdir="../figs")

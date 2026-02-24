@@ -360,11 +360,6 @@ def plot(data: list[Sequence[float]],
             int(len(legend)/len(linestyle))
     if len(fillErr) != len(legend):
         fillErr = fillErr*int(len(legend)/len(fillErr))
-    cmap = plt.get_cmap('tab10')  # tab10
-    if ncolors is not None:
-        colors = [cmap(i) for i in range(ncolors)]*(len(data)//ncolors+1)
-    else:
-        colors = [cmap(i) for i in range(len(data))]
     for i in range(len(data)-1):
         plt.plot(data[0], data[i+1], marker=marker[i],
                  linestyle=linestyle[i], label=legend[i])  # plotting data

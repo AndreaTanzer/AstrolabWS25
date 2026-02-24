@@ -286,7 +286,6 @@ class PlateSolver:
 
 
 def plot_stars(im, stars, title=""):
-    ny, nx = im.shape
     fig, ax = plt.subplots(figsize=(8, 6))
     ax.scatter(stars['xcentroid'], stars['ycentroid'], s=50, edgecolors='r', facecolors='none', label='Detected')
     plot.imshow_on_ax(ax, im)

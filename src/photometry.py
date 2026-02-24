@@ -8,12 +8,9 @@ Created on Tue Feb 10 18:37:36 2026
 import numpy as np
 import pandas as pd
 from astropy import wcs, table, time
-import astropy.units as u
 from astropy.stats import sigma_clipped_stats
 from astroquery.simbad import Simbad
-from astroquery.vizier import Vizier
 from photutils import psf, aperture
-# from photutils.aperture import CircularAperture
 from matplotlib.pyplot import close
 from timeit import default_timer
 import warnings
@@ -41,7 +38,7 @@ def calc_zero_point(mag, flux, zp_default=np.nan):
 
     """
     zps = mag + 2.5*np.log10(flux)
-    zp_mean, zp_median, zp_std = sigma_clipped_stats(zps, sigma=2)
+    zp_mean, _, _ = sigma_clipped_stats(zps, sigma=2)
     if np.isnan(zp_mean):
         # none of the detected stars have brightness data in the requested band
         zp_mean = zp_default 
@@ -252,7 +249,7 @@ if __name__ == "__main__":
     star_pos = get_star_pos(data[0])
     coords_with_idx = get_coords_with_idx(star_pos)
     band = data[0].get("filter")
-    query_Vizier(coords_with_idx, band)
+    # query_Vizier(coords_with_idx, band)
 
     print('Execution Time: %.2f s' % (default_timer()-starttime))
     

@@ -89,74 +89,20 @@ def plate_solve_all(data: helper.ScienceFrameList, force_solve: bool=False,
 
     '''
     # get find_stars kwargs for each filter
-    if filter_kwargs is None:
-        path_str = str(data[0].path)
-        name = path_str.split(os.sep)[-3]
-        filter_kwargs = helper.get_dataset(name, "find_stars")
+    filter_kwargs = _get_filter_kwargs(data, filter_kwargs)
     
     # 2. Global Star Query
-    print("Fetching Global UCAC4 reference catalog...")
-    temp_solver = PlateSolver(data[0])
-    for j in range(10):  # randomly throws errors
-        try:  # if larger than 2r, star wouldnt be in FOV
-            star_table = temp_solver.query_vizier(2*data[0].radius)
-            # gaia_table = temp_solver.query_gaia(1.5*data[0].radius)
-            break
-        except Exception as e:
-            if j == 9:
-                raise e
-    
+    star_table = _query_global_ucac4_table(data)
+
     # force_solve for each filter, defaulting to False if not specified
     filters = data.unique("filter")
-    force_dict = {}
-    if isinstance(force_solve, bool):
-        for filt in filters:
-            force_dict[filt] = force_solve
-    else:
-        for filt in filters:
-            if filt in force_solve:
-                force_dict[filt] = force_solve[filt]
-            else:
-                force_dict[filt] = False
+    force_dict = _build_force_dict(filters, force_solve)
                 
     # Create task list for all filters
-    all_tasks = []
-    for frame in data:
-        filt = frame.get("filter")
-        # Match the specific kwargs for this frame's filter
-        current_kwargs = filter_kwargs.get(filt, {})
-        # Check force_solve logic for this specific filter
-        should_force = force_dict.get(filt, False)
-        all_tasks.append((frame, current_kwargs, should_force))
-    
-    # Launch 1 pool for entire dataset
-    num_workers = max(1, os.cpu_count() - 1)
-    print(f"Launching pool for {len(all_tasks)} frames across {num_workers} cores...")
-    with ProcessPoolExecutor(max_workers=num_workers, initializer=init_worker, 
-                             initargs=(star_table,)) as executor:
-        # We pass the pre-matched kwargs directly into the submit call
+    tasks = _build_tasks(data, filter_kwargs, force_dict)
+
+    _run_pool(tasks, star_table)
         
-        # futures = [executor.submit(solve_single_frame_task, t[0], t[1], t[2]) for t in all_tasks]
-
-        # total = len(futures)
-        # for i, future in enumerate(futures, start=1):
-        #     print(f"[{i}/{total}] waiting for result... future={future}")
-        #     output = future.result()
-        #     if output is not None:
-        #         print(output)
-        futures = []
-        names = []
-
-        for (frame, current_kwargs, should_force) in all_tasks:
-            futures.append(executor.submit(solve_single_frame_task, frame, current_kwargs, should_force))
-            names.append(str(frame.path).split(os.sep)[-1])
-
-        total = len(futures)
-        for i, (future, name) in enumerate(zip(futures, names), start=1):
-            print(f"[{i}/{total}] waiting: {name}")
-            output = future.result()
-            if output is not None:
-                print(output)
 
 if __name__ == "__main__":
     plt.close("all")
@@ -174,4 +120,75 @@ if __name__ == "__main__":
     # w = wcs.WCS(frame.header)
     
 
+def _get_filter_kwargs(data, filter_kwargs):
+    # get find_stars kwargs for each filter
+    if filter_kwargs is not None:
+        return filter_kwargs
+    path_str = str(data[0].path)
+    name = path_str.split(os.sep)[-3]
+    return helper.get_dataset(name, "find_stars")
 
+
+def _query_global_ucac4_table(data):
+    # 2. Global Star Query
+    print("Fetching Global UCAC4 reference catalog.")
+    temp_solver = PlateSolver(data[0])
+    for j in range(10):  # randomly throws errors
+        try:  # if larger than 2r, star wouldnt be in FOV
+            return temp_solver.query_vizier(2 * data[0].radius)
+        except Exception as e:
+            if j == 9:
+                raise e
+    # unreachable, but explicit
+    raise RuntimeError("UCAC4 query failed unexpectedly")
+
+
+def _build_force_dict(filters, force_solve):
+    # force_solve for each filter, defaulting to False if not specified
+    force_dict = {}
+    if isinstance(force_solve, bool):
+        for filt in filters:
+            force_dict[filt] = force_solve
+    else:
+        for filt in filters:
+            if filt in force_solve:
+                force_dict[filt] = force_solve[filt]
+            else:
+                force_dict[filt] = False
+    return force_dict
+
+
+def _build_tasks(data, filter_kwargs, force_dict):
+    # Create task list for all filters
+    all_tasks = []
+    for frame in data:
+        filt = frame.get("filter")
+        # Match the specific kwargs for this frame's filter
+        current_kwargs = filter_kwargs.get(filt, {})
+        # Check force_solve logic for this specific filter
+        should_force = force_dict.get(filt, False)
+        all_tasks.append((frame, current_kwargs, should_force))
+    return all_tasks
+
+
+def _run_pool(tasks, star_table):
+    # Launch 1 pool for entire dataset
+    num_workers = max(1, os.cpu_count() - 1)
+    print(f"Launching pool for {len(tasks)} frames across {num_workers} cores.")
+
+    futures = []
+    names = []
+
+    with ProcessPoolExecutor(max_workers=num_workers, initializer=init_worker, initargs=(star_table,)) as executor:
+        # We pass the pre-matched kwargs directly into the submit call
+
+        for (frame, current_kwargs, should_force) in tasks:
+            futures.append(executor.submit(solve_single_frame_task, frame, current_kwargs, should_force))
+            names.append(str(frame.path).split(os.sep)[-1])
+
+        total = len(futures)
+        for i, (future, name) in enumerate(zip(futures, names), start=1):
+            print(f"[{i}/{total}] waiting: {name}")
+            output = future.result()  # explicit blocking: preserves current behavior
+            if output is not None:
+                print(output)
