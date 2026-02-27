@@ -14,7 +14,7 @@ import astropy.units as u
 from astroquery.gaia import Gaia
 from astroquery.vizier import Vizier
 import astroalign as aa
-from photutils import detection
+from photutils import detection, centroids
 import matplotlib.pyplot as plt
 import os
 import time
@@ -54,6 +54,13 @@ class PlateSolver:
     def failed_plate_solving(self):
         return self.in_history("Failed Plate Solving")
     
+    def center_stars(self, im, x_init, y_init, box_size):
+        """ Recenter stars using centroid_sources
+            Changes position by upt to 0.5 px"""
+        x_new, y_new = centroids.centroid_sources(im, x_init, y_init, 
+            box_size=box_size, centroid_func=centroids.centroid_2dg)
+        return x_new, y_new
+    
     def find_stars(self, thresh: float=200, fwhm: int=13, roundhi: float=1, 
                    sharplo: float=0, sharphi: float=1, peaklo: float=100, 
                    printing: bool=False):
@@ -87,6 +94,9 @@ class PlateSolver:
         if stars is None:
             return None
         stars = stars[stars["peak"] > peaklo]  # exclude very low contrast stars
+        # recentering, possible but takes longer and barely changes output
+        # stars["xcentroid"], stars["ycentroid"] = self.center_stars(
+        #     self.im, stars["xcentroid"], stars["ycentroid"], fwhm*3)
         stars.sort("xcentroid")
         # format cols in output (just for convenience)
         for col in stars.itercols():
@@ -329,7 +339,7 @@ def plate_solve_filter(all_data: helper.ScienceFrameList, filt: str,
             try:  # if larger than 2r, star wouldnt be in FOV
                 # star_table = solver.query_gaia(2*d.radius)
                 star_table = init_solver.query_gaia(2*data[0].radius)
-                star_table.sort(f"{filt}mag")
+                star_table.sort("phot_g_mean_mag")
                 break
             except Exception as e:
                 if i == 9:

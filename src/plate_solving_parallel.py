@@ -187,5 +187,6 @@ if __name__ == "__main__":
     plt.close("all")
     # Update this path to your current test directory
     directory = "../data/20251104_lab"
+    # directory = "../data/20260114_lab"
     data = io_data.read_folder(directory + "/Reduced")
     plate_solve_all(data, force_solve=True, verbose=False)

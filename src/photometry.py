@@ -20,32 +20,28 @@ import plot
 import io_data
 from helper import get_repo_root
 
-def calc_zero_point(mag, flux, zp_default=np.nan):
+def calc_zero_point(mag: table.Table, flux: table.Table, sigma: float=1.):
     """
     Calculates magnitude where flux drops to 1
 
     Parameters
     ----------
-    mag : TYPE
-        DESCRIPTION.
-    flux : TYPE
-        DESCRIPTION.
+    mag : table.Table
+        actual magnitude of stars.
+    flux : table.Table
+        measured flux of stars.
+    sigma: float
 
     Returns
     -------
-    zp_mean : TYPE
-        DESCRIPTION.
+    zp_mean : float
+        magnitude where flux is drops to 1.
 
     """
     zps = mag + 2.5*np.log10(flux)
-    zp_mean, _, _ = sigma_clipped_stats(zps, sigma=2)
-    if np.isnan(zp_mean):
-        # none of the detected stars have brightness data in the requested band
-        zp_mean = zp_default 
-        default_flag = True
-    else:
-        default_flag = False
-    return zp_mean, default_flag
+    zp_mean, _, _ = sigma_clipped_stats(zps, sigma=sigma)
+    # plot.plot(data=[mag, mag+2.5*np.log10(flux)], marker=["."], linestyle=["None"])
+    return zp_mean
 
 def calc_magnitude(flux, zp):
     with warnings.catch_warnings():
@@ -106,23 +102,30 @@ def create_upload_table(pos):
     upload_table = table.Table(coords, names=["idx", "ra", "dec"])
     return upload_table
 
-def aperture_photometry(frame, zp_default, fwhm=10, r_in=2, r_out=3, 
-                        plotting=False, calc_fwhm=False):
+@helper.functimer
+def calc_fwhm(data):
+    fwhms = []
+    for frame in data:
+        im = frame.load() 
+        stars = frame.load_stars()
+        star_pos = get_star_pos(stars, frame.header)
+        fwhm_stars = psf.fit_fwhm(im, xypos=star_pos["xypos"], fit_shape=39)
+        fwhms.append(np.median(fwhm_stars))
+    return np.array(fwhms)
+
+def aperture_photometry(frame, fwhm=7, r_in=4, r_out=5, 
+                        plotting=False):
     '''
     Perform aperture photometry on all detected stars in frame.
-    Calibrate 
+    Calibrate using 
 
     Parameters
     ----------
     frame : TYPE
         DESCRIPTION.
-    zp_default : TYPE
-        DESCRIPTION.
     fwhm : int, optional
-        Photometric radius is 2*fwhm. 10 seems to be pretty constant across frames.
-        Probably best to keep it constant. The default is 10.
-    plotting : TYPE, optional
-        DESCRIPTION. The default is False.
+        Photometric radius is 2*fwhm. 7 seems to be pretty constant across frames.
+        Probably best to keep it constant. The default is 7.
 
     Returns
     -------
@@ -140,16 +143,7 @@ def aperture_photometry(frame, zp_default, fwhm=10, r_in=2, r_out=3,
     star_pos = get_star_pos(stars, frame.header)
     if star_pos is None:
         raise AttributeError("frame has no stars extension")
-    if plotting is True:
-        title = frame.path.name + ", plate solved"
-        plot.imshow_coords(im, star_pos["w"], star_pos["stars"], title=title)
-    
-    if calc_fwhm is True:
-        # fit_shape: diameter of area to look for star
-        fwhms = psf.fit_fwhm(im, xypos=star_pos["xypos"], fit_shape=39)
-        fwhm = int(np.median(fwhms))
-        print(f"{fwhm=:.1f}")
-    
+    # plot.plot_stars(im, stars)
     # perform aperture photometry on all stars
     aptr = aperture.CircularAperture(star_pos["xypos"], r=fwhm)
     annulus = aperture.CircularAnnulus(star_pos["xypos"], r_in=r_in*fwhm, r_out=r_out*fwhm)
@@ -168,33 +162,26 @@ def aperture_photometry(frame, zp_default, fwhm=10, r_in=2, r_out=3,
     phot_table["dec"] = star_pos["dec"]
 
     # calibrate image
-    upload_table = create_upload_table(star_pos)
-    # simbad_data = query_Simbad(upload_table, frame.get("filter"))
-    # flux_series = pd.Series(phot_table["flux"])
-    # flux_series = flux_series.loc[flux_series>0]
-    # simbad_data["flux"] = simbad_data["idx"].map(flux_series)
-    # # restrict to sources that have positive flux after background subtraction
-    # simbad_existent = simbad_data.loc[simbad_data["flux"]>0]
-    # # Calibrate image using sources
-    # zp, default_flag = calc_zero_point(simbad_existent["mag"], simbad_existent["flux"], zp_default)
-    zp, default_flag = calc_zero_point(stars[f"{band}mag"], phot_table["flux"])
-    phot_table["default_zp"] = default_flag
+    zp = calc_zero_point(stars[f"{band}mag"], phot_table["flux"])
     # Calculate magnitudes from flux using zero point
     phot_table["mag"] = calc_magnitude(phot_table["flux"], zp)
     phot_table["mag"].format = "{:.2f}"
+    phot_table["main_id"] = stars["UCAC4"]
+    phot_table["zp"] = zp
     # -------------------------------------------------------------------------
     # Get main_id of stars
-    ids = query_Simbad_id(upload_table)
-    phot_df = phot_table.to_pandas()
-    # drop sources without Gaia G magnitude
-    merged_df = phot_df.merge(ids, on="idx", how="right")
-    # In case there are multiple detections for the same star, only keep the
-    # detection with the brightest flux
-    # probably mainly used in overexposed images
-    merged_df.sort_values(by="mag").drop_duplicates(subset="main_id", keep="first", 
-                                                    inplace=True)
-    phot_table_merged = table.Table.from_pandas(merged_df)
-    return phot_table_merged, zp
+    # upload_table = create_upload_table(star_pos)
+    # ids = query_Simbad_id(upload_table)
+    # phot_df = phot_table.to_pandas()
+    # # drop sources without Gaia G magnitude
+    # merged_df = phot_df.merge(ids, on="idx", how="right")
+    # # In case there are multiple detections for the same star, only keep the
+    # # detection with the brightest flux
+    # # probably mainly used in overexposed images
+    # merged_df.sort_values(by="mag").drop_duplicates(subset="main_id", keep="first", 
+    #                                                 inplace=True)
+    # phot_table_merged = table.Table.from_pandas(merged_df)
+    return phot_table
 
 def get_common_stars(table):
     # get stars visible across (almost) all frames
@@ -209,56 +196,96 @@ def extract_value(table, value, index="t", column="idx"):
     matrix = df.pivot(index=index, columns=column, values=value)
     return matrix
 
+def extract_target(phot_table, main_id, plotting=False):
+    phot_target = phot_table[phot_table["main_id"]==main_id]
+    if plotting is True:
+        plot.plot(data=[phot_target["t"].datetime, phot_target["mag"]],
+                  title=band, ylabel="mag", marker=".")
+    return phot_target
+
 @helper.functimer
-def band_photometry(data, band, main_id="V* RR Lyr", verbose=False, **phot_kwargs):
+# @helper.profiler(n=50)
+def band_photometry(data, band, verbose=False, **phot_kwargs):
     phot_tables = []
     data_band = data.filter(filter=band)
-    zp_prev = np.nan
     for i, frame in enumerate(data_band):
         helper.print_statusline(f"{i+1}/{len(data_band)}")
         try:
             # use previously calculated zp if calibration failed because no detected
             # star has magnitude data in the requested band
-            phot_table, zp = aperture_photometry(frame, zp_prev, **phot_kwargs)
+            phot_table = aperture_photometry(frame, **phot_kwargs)
             if phot_table is not None:
                 phot_tables.append(phot_table)
-            if not np.isnan(zp):
-                zp_prev = zp
         except Exception as e:
             print(f"{i}: {e}\n")
             continue
     phot_tables = table.vstack(phot_tables, metadata_conflicts="silent")
     phot_tables.sort(["main_id", "t"])
-    phot_target = phot_tables[phot_tables["main_id"]==main_id]
-    if verbose:
-        phot_target["t", "main_id", "mag"].pprint_all()
-        plot.plot([phot_target["t"].datetime, phot_target["mag"]], title=band, ylabel="mag", marker=".")
-    return phot_target
+    return phot_tables
+
+def plot_phot(phot, name, band, t_roll="30min", title=None):
+    df = phot.to_pandas()
+    # create 5min rolling average of magnitude, save it to column mag_5m
+    df = df.merge(df.set_index("t").rolling(t_roll)["mag"].mean().rename("mag_rolling"), 
+                  left_on=["t"], right_index=True)
+    # convert name to valid filename (cant use *)
+    fname = helper.slugify(f"{name}_{band}_photometry")
+    # plot_kwargs = dict(data=[df["t"], df["mag"], df["mag_rolling"], df["zp"]/3], 
+    #                   ylabel="mag", linestyle=["None", "-", "-"], marker=[".", "None", "None"], 
+    #                   legend=["single measurements", f"{t_roll} running average", "zp-16mag"])
+    plot_kwargs = [dict(data=[df["t"], df["aperture_sum"], df["flux"]], title=title,
+                        ylabel="flux", legend=["raw flux", "background subtracted"]),
+                   dict(data=[df["t"], df["mag"], df["mag_rolling"]],
+                        ylabel="measurements/mag", linestyle=["None", "-"], marker=[".", "None"],
+                        legend=["single measurements", f"{t_roll} running average"]),
+                   dict(data=[df["t"], df["zp"]], ylabel="zeropoints/mag")
+                   ]
+    plot.subplots(1, 3, [plot.plot_on_ax,]*3, plot_kwargs, title=None, 
+                  add_colorbar=False, figsize=(8, 4.5), fname=repo_root / "figs" / fname)
 
 if __name__ == "__main__":
-    # TODO: Move this part into helper.get_dataset
     starttime = default_timer()
-    close("all")
+    # close("all")
     repo_root = get_repo_root()
-    labs = {"V* RR Lyr": "20251104_lab", "HAT-P-32": "20260114_lab"}
-    name = "HAT-P-32"
+    labs = ["20251104_lab", "20260114_lab"]
+    UCAC4 = helper.get_dataset(labs[0], "UCAC4")
+    name = helper.get_dataset(labs[0], "name")
     band = "V"
-    directory = repo_root / "data" / labs[name]
+    directory = repo_root / "data" / labs[0]
     
     # TODO: move this part into a function, loop over all filters
     # read data
     data = io_data.read_folder(directory / "Solved")
+    # fwhm = calc_fwhm(data.filter(filter=band))
+    phot_table = band_photometry(data, band, r_in=2, r_out=3)
+    phot_target = extract_target(phot_table, UCAC4)
+    
+    stars = data[0].load_stars()
+    UCAC4_ref = stars["UCAC4"][4]
+    mag_ref = stars["Vmag"][4]
+    phot_ref = extract_target(phot_table, UCAC4_ref)
+    
+    plot_phot(phot_target, name, band, title="Target Star")
+    plot_phot(phot_ref, f"UCAC4 {UCAC4_ref}", band, 
+              title=f"UCAC4 {UCAC4_ref}, V={mag_ref:.3f}mag")
+    # df = phot_target.to_pandas()
+    # # create 5min rolling average of magnitude, save it to column mag_5m
+    # t_roll = "15min"
+    # df = df.merge(df.set_index("t").rolling(t_roll)["mag"].mean().rename("mag_rolling"), 
+    #               left_on=["t"], right_index=True)
+    # # convert name to valid filename (cant use *)
+    # fname = helper.slugify(f"{name}_{band}_photometry")
+    # # plot_kwargs = dict(data=[df["t"], df["mag"], df["mag_rolling"], df["zp"]/3], 
+    # #                   ylabel="mag", linestyle=["None", "-", "-"], marker=[".", "None", "None"], 
+    # #                   legend=["single measurements", f"{t_roll} running average", "zp-16mag"])
+    # plot_kwargs = [dict(data=[df["t"], df["mag"], df["mag_rolling"]], 
+    #                     ylabel="measurements/mag", linestyle=["None", "-"], marker=[".", "None"],
+    #                     legend=["single measurements", f"{t_roll} running average"]),
+    #                dict(data=[df["t"], df["zp"]], ylabel="zeropoints/mag")
+    #                ]
+    # plot.subplots(1, 2, [plot.plot_on_ax,]*2, plot_kwargs, title=None, 
+    #              add_colorbar=False, figsize=(8, 4.5), fname=repo_root / "figs" / fname)
 
-    phot_table = band_photometry(data, band, main_id=name, r_in=1, r_out=2)
-    df = phot_table.to_pandas()
-    # create 5min rolling average of magnitude, save it to column mag_5m
-    df = df.merge(df.set_index("t").rolling("5min")["mag"].mean().rename("mag_5m"), 
-                  left_on=["t"], right_index=True)
-    # convert name to valid filename (cant use *)
-    fname = helper.slugify(f"{name}_{band}_photometry")
-    plot.plot([df["t"], df["mag"], df["mag_5m"]], ylabel="mag", linestyle=["None", "-"], 
-              marker=[".", "None"], legend=["single measurements", "5 min running average"],
-              fname=repo_root / "figs" / fname)
 
     print('Execution Time: %.2f s' % (default_timer()-starttime))
     

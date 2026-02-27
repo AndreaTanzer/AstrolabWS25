@@ -326,12 +326,16 @@ DATASETS = {"20251104_lab": {"centers": {"B": (1360, 1760), "V": (1300, 1680),
                                 "i": dict(thresh=200, peaklo=300), 
                                 "r": dict(thresh=150, peaklo=150), 
                                 "u":  dict(thresh=100, peaklo=50)},
+                             "UCAC4": "664-074561",
+                             "name": "RR Lyrae"
                              },
             "20260114_lab": {"centers": {"B": (610, 780), "V": (490, 705), 
                                          "r": (625, 800)},
                              "find_stars": {
                                  "B": dict(thresh=1000, peaklo=1000), # (1000, 800)
                                  "V": dict(thresh=3000, peaklo=3000),
-                                 "r": dict(thresh=1000, peaklo=1000)}
+                                 "r": dict(thresh=1000, peaklo=1000)},
+                             "UCAC4": "684-011820",
+                             "name": "HAT-P-32"
                              }
             }
