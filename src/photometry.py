@@ -289,6 +289,7 @@ if __name__ == "__main__":
     data = io_data.read_folder(directory / "Solved")
     # fwhm = calc_fwhm(data.filter(filter=band))
     phot_table = band_photometry(data, band, r_in=2, r_out=3)
+    phot_table = band_photometry(data, band, r_in=2, r_out=5)
     phot_target = extract_target(phot_table, UCAC4)
     
     stars = data[0].load_stars()
@@ -299,24 +300,6 @@ if __name__ == "__main__":
     plot_phot(phot_target, name, band, title="Target Star")
     plot_phot(phot_ref, f"UCAC4 {UCAC4_ref}", band, 
               title=f"UCAC4 {UCAC4_ref}, V={mag_ref:.3f}mag")
-    # df = phot_target.to_pandas()
-    # # create 5min rolling average of magnitude, save it to column mag_5m
-    # t_roll = "15min"
-    # df = df.merge(df.set_index("t").rolling(t_roll)["mag"].mean().rename("mag_rolling"), 
-    #               left_on=["t"], right_index=True)
-    # # convert name to valid filename (cant use *)
-    # fname = helper.slugify(f"{name}_{band}_photometry")
-    # # plot_kwargs = dict(data=[df["t"], df["mag"], df["mag_rolling"], df["zp"]/3], 
-    # #                   ylabel="mag", linestyle=["None", "-", "-"], marker=[".", "None", "None"], 
-    # #                   legend=["single measurements", f"{t_roll} running average", "zp-16mag"])
-    # plot_kwargs = [dict(data=[df["t"], df["mag"], df["mag_rolling"]], 
-    #                     ylabel="measurements/mag", linestyle=["None", "-"], marker=[".", "None"],
-    #                     legend=["single measurements", f"{t_roll} running average"]),
-    #                dict(data=[df["t"], df["zp"]], ylabel="zeropoints/mag")
-    #                ]
-    # plot.subplots(1, 2, [plot.plot_on_ax,]*2, plot_kwargs, title=None, 
-    #              add_colorbar=False, figsize=(8, 4.5), fname=repo_root / "figs" / fname)
-
 
     print('Execution Time: %.2f s' % (default_timer()-starttime))
     

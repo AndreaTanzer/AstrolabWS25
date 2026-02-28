@@ -1,1 +1,1 @@
-trial run was already in the data we downloaded.
+here all non RR__Lyr fit files
