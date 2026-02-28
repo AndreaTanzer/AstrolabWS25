@@ -36,10 +36,15 @@ def calc_zero_point(mag: table.Table, flux: table.Table, sigma: float=1.):
         magnitude where flux is drops to 1.
 
     """
+    if not hasattr(calc_zero_point, "_call_count"):
+        calc_zero_point._call_count = 0
+
+    calc_zero_point._call_count += 1
+
     zps = mag + 2.5*np.log10(flux)
     zp_mean, _, _ = sigma_clipped_stats(zps, sigma=sigma)
-    # TODO: Plot every xth plot
-    # plot.plot(data=[mag, mag+2.5*np.log10(flux)], marker=["."], linestyle=["None"])
+    if calc_zero_point._call_count % 10 == 0:
+        plot.plot(data=[mag, mag + 2.5*np.log10(flux)], marker=["."], linestyle=["None"], fname = repo_root / "figs" / f"zp_debug_{calc_zero_point._call_count:03d}.png", showPlot=False)
     return zp_mean
 
 def calc_magnitude(flux, zp):

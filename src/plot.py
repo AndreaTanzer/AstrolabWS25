@@ -383,13 +383,18 @@ def plot_on_ax(ax,
 def plot(figsize: tuple[float, float] = (8, 6),  # (4,3) for large labels, (8,4.5) instead of (16,9)
          dpi: int = 100, 
          resolution: int = 2,
-         fname: str = None, 
+         fname: str = None,
+         showPlot = False,
          **plot_kwargs):
     fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
     plot_on_ax(ax, **plot_kwargs)
     if fname != None:
         fig.savefig(fname, dpi=dpi*resolution, bbox_inches='tight')
-    plt.show()
+        print(f"Saved plot to: {fname}")
+    if showPlot:
+        plt.show()
+    else:
+        plt.close(fig)
     
 # def plot(data: list[Sequence[float]], 
 #          title: str = None,
