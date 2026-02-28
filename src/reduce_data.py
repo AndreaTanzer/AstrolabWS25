@@ -88,7 +88,7 @@ def reduce(sci, mbias, mdark_rate, mflat):
     data -= sci.get("EXPOSURE")*mdark_rate  # Step 4
     data /= mflat  # Step 7
     # For photometry. We should actually use sigma_clipped_stats for this but
-    # the difference is ~1e-2 per pix with max values ~1e5 -> negligible
+    # the difference is ~1e-1 per pix with max values ~1e5 -> negligible
     # median is 10 times faster (1s per pic vs 10s)
     data -= np.median(data)
     return data

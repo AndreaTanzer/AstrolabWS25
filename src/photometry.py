@@ -48,6 +48,7 @@ def calc_zero_point(mag: table.Table, flux: table.Table, sigma: float=1.):
         plot.plot(data=[mag, mag + 2.5*np.log10(flux)], marker=["."], linestyle=["None"], 
             title="Photometric Zero Point Determination", xlabel="Catalog Magnitude", 
             ylabel="Instrumental Magnitude (m + 2.5 log10 flux)", fname = fname, showPlot=False)
+
     return zp_mean
 
 def calc_magnitude(flux, zp):
@@ -288,7 +289,6 @@ if __name__ == "__main__":
     print("=======================\n")
     data = io_data.read_folder(directory / "Solved")
     # fwhm = calc_fwhm(data.filter(filter=band))
-    phot_table = band_photometry(data, band, r_in=2, r_out=3)
     phot_table = band_photometry(data, band, r_in=2, r_out=5)
     phot_target = extract_target(phot_table, UCAC4)
     

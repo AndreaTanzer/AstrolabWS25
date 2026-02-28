@@ -195,7 +195,7 @@ if __name__ == "__main__":
     print("DEBUG reduced_dir:", reduced_dir)
 
     # directory = "../data/20260114_lab"
-    data = io_data.read_folder(directory / "/Reduced")
+    data = io_data.read_folder(directory / "Reduced")
     print("DEBUG nframes:", len(data))
 
     plate_solve_all(data, force_solve=True, verbose=False)
