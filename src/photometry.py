@@ -152,15 +152,8 @@ def aperture_photometry(frame, fwhm=7, r_in=4, r_out=5,
         raise AttributeError("frame has no stars extension")
     # plot.plot_stars(im, stars)
     # perform aperture photometry on all stars
-    aptr = aperture.CircularAperture(star_pos["xypos"], r=r_in*fwhm)
-    annulus = aperture.CircularAnnulus(star_pos["xypos"], r_in=r_in*fwhm, r_out=r_out*fwhm)
-    aperstats = aperture.ApertureStats(im, annulus)
-    bkg_mean = aperstats.mean
-    phot_table = aperture.aperture_photometry(im, aptr)
-    # rename and add some columns to table
-    phot_table.rename_column("id", "idx")
-    total_bkg = bkg_mean*aptr.area
-    phot_table["flux"] = phot_table["aperture_sum"] - total_bkg
+    phot_table = compute_flux(im, star_pos["xypos"], fwhm, r_in, r_out)
+
     for col in phot_table.itercols():
         col.format = "{:.4g}"
     time_str = frame.get("DATE-OBS")
@@ -189,6 +182,22 @@ def aperture_photometry(frame, fwhm=7, r_in=4, r_out=5,
     #                                                 inplace=True)
     # phot_table_merged = table.Table.from_pandas(merged_df)
     return phot_table
+
+
+
+def compute_flux(im, xypos, fwhm, r_in, r_out):
+    aptr = aperture.CircularAperture(xypos, r=r_in*fwhm)
+    annulus = aperture.CircularAnnulus(xypos, r_in=r_in*fwhm, r_out=r_out*fwhm)
+    aperstats = aperture.ApertureStats(im, annulus)
+    bkg_mean = aperstats.mean
+    phot_table = aperture.aperture_photometry(im, aptr)
+    # rename and add some columns to table
+    phot_table.rename_column("id", "idx")
+    total_bkg = bkg_mean * aptr.area
+    phot_table["flux"] = phot_table["aperture_sum"] - total_bkg
+    
+    return phot_table
+
 
 def get_common_stars(table):
     # get stars visible across (almost) all frames
@@ -251,9 +260,6 @@ def plot_phot(phot, name, band, t_roll="30min", title=None):
                   left_on=["t"], right_index=True)
     # convert name to valid filename (cant use *)
     fname = helper.slugify(f"{name}_{band}_photometry")
-    # plot_kwargs = dict(data=[df["t"], df["mag"], df["mag_rolling"], df["zp"]/3], 
-    #                   ylabel="mag", linestyle=["None", "-", "-"], marker=[".", "None", "None"], 
-    #                   legend=["single measurements", f"{t_roll} running average", "zp-16mag"])
     plot_kwargs = [dict(data=[df["t"], df["aperture_sum"], df["flux"]], title=title,
                         ylabel="flux", legend=["raw flux", "background subtracted"]),
                    dict(data=[df["t"], df["mag"], df["mag_rolling"]],
