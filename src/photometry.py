@@ -12,7 +12,7 @@ from astroquery.simbad import Simbad
 from photutils import psf, aperture
 from timeit import default_timer
 import warnings
-
+import os
 import helper
 import plot
 import io_data
@@ -38,6 +38,7 @@ def calc_zero_point(mag: table.Table, flux: table.Table, sigma: float=1.):
     """
     zps = mag + 2.5*np.log10(flux)
     zp_mean, _, _ = sigma_clipped_stats(zps, sigma=sigma)
+    # TODO: Plot every xth plot
     # plot.plot(data=[mag, mag+2.5*np.log10(flux)], marker=["."], linestyle=["None"])
     return zp_mean
 
@@ -143,7 +144,7 @@ def aperture_photometry(frame, fwhm=7, r_in=4, r_out=5,
         raise AttributeError("frame has no stars extension")
     # plot.plot_stars(im, stars)
     # perform aperture photometry on all stars
-    aptr = aperture.CircularAperture(star_pos["xypos"], r=fwhm)
+    aptr = aperture.CircularAperture(star_pos["xypos"], r=r_in*fwhm)
     annulus = aperture.CircularAnnulus(star_pos["xypos"], r_in=r_in*fwhm, r_out=r_out*fwhm)
     aperstats = aperture.ApertureStats(im, annulus)
     bkg_mean = aperstats.mean
@@ -206,46 +207,30 @@ def extract_target(phot_table, main_id, plotting=False):
 def band_photometry(data, band, verbose=False, **phot_kwargs):
     phot_tables = []
     data_band = data.filter(filter=band)
-    print("\n=== band_photometry DEBUG ===")
-    print("Requested band:", repr(band))
-    print("All bands in data.unique('filter'):", data.unique("filter"))
-    print("Frames total:", len(data))
-    print("Frames in requested band:", len(data_band))
+    n_total = len(data_band)
+
     for i, frame in enumerate(data_band):
         helper.print_statusline(f"{i+1}/{len(data_band)}")
-        frame_filter = frame.get("filter")
-        date_obs = frame.get("DATE-OBS")
-        print(f"\n--- Frame {i} ---")
-        print("path:", getattr(frame, "path", None))
-        print("frame.get('filter'):", repr(frame_filter))
-        print("frame.get('DATE-OBS'):", repr(date_obs))
 
         try:
             # use previously calculated zp if calibration failed because no detected
             # star has magnitude data in the requested band
             phot_table = aperture_photometry(frame, **phot_kwargs)
-            if phot_table is None:
-                print(f"{i}: aperture_photometry returned None\n")
-            else:
-                print(f"{i}: OK phot_table rows={len(phot_table)}\n")
+            status = "NONE" if phot_table is None else f"OK rows={len(phot_table)}"
+            print(f"({i+1}/{n_total}) {status}")
+
+            if phot_table is not None:
                 phot_tables.append(phot_table)
 
         except Exception as e:
-            print(f"{i}: {type(e).__name__}: {e}\n")
-            import traceback
-            traceback.print_exc()
+            print(f"({i+1}/{n_total}) ERR {type(e).__name__}: {e}")
             continue
 
     if len(data_band) == 0:
-        raise ValueError(
-            f"No frames found for band={band!r}. Available filters: {data.unique('filter')}"
-        )
+        raise ValueError(f"No frames found for band={band!r}. Available filters: {data.unique('filter')}")
 
     if len(phot_tables) == 0:
-        raise RuntimeError(
-            f"All frames failed for band={band!r}. "
-            "Scroll up for the per-frame error messages."
-        )
+        raise RuntimeError(f"All frames failed for band={band!r}. " "Scroll up for the per-frame error messages." )
 
     phot_tables = table.vstack(phot_tables, metadata_conflicts="silent")
     phot_tables.sort(["main_id", "t"])
@@ -283,16 +268,6 @@ if __name__ == "__main__":
     
     # TODO: move this part into a function, loop over all filters
     # read data
-    print("\n=== DIRECTORY DEBUG ===")
-    print("repo_root:", repo_root)
-    print("labs[0]:", labs[0])
-    print("directory:", directory)
-    print("directory exists:", directory.exists())
-    print("Solved path:", directory / "Solved")
-    print("Solved exists:", (directory / "Solved").exists())
-    print("Solved is dir:", (directory / "Solved").is_dir())
-
-    import os
     if (directory / "Solved").exists():
         print("Solved content (first 20):")
         print(sorted(os.listdir(directory / "Solved"))[:20])

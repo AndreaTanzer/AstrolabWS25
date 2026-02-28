@@ -189,7 +189,13 @@ def plate_solve_all(data: helper.ScienceFrameList, force_solve=False,
 if __name__ == "__main__":
     plt.close("all")
     # Update this path to your current test directory
-    directory = "../data/20251104_lab"
+    repo_root = helper.get_repo_root()
+    directory = repo_root / "data" / "20251104_lab"
+    reduced_dir = directory / "Reduced"
+    print("DEBUG reduced_dir:", reduced_dir)
+
     # directory = "../data/20260114_lab"
-    data = io_data.read_folder(directory + "/Reduced")
+    data = io_data.read_folder(directory / "/Reduced")
+    print("DEBUG nframes:", len(data))
+
     plate_solve_all(data, force_solve=True, verbose=False)

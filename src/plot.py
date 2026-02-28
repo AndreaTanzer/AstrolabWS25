@@ -161,7 +161,7 @@ def hist(data, **kwargs):
     plt.show()
     
 def subplots(nx, ny, funcs, plots, title=None, figsize=(4, 3), resolution=2, 
-             add_colorbar=True, fname=None):
+             add_colorbar=True, fname=None, showPlot = False):
     '''
     Plots nx*ny subplots, filling row after row with given func/plot pairs. 
 
@@ -210,8 +210,11 @@ def subplots(nx, ny, funcs, plots, title=None, figsize=(4, 3), resolution=2,
         plt.suptitle(title)
     if fname is not None:
         fig.savefig(fname, dpi=100*resolution, bbox_inches="tight")
-    # plt.tight_layout()
-    plt.show()
+        print(f"Saved plot to: {fname}")
+    if showPlot:
+        plt.show()
+    else:
+        plt.close(fig)
 
 def plot_on_ax(ax, 
                data: list[Sequence[float]], 
