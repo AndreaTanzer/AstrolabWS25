@@ -6,12 +6,10 @@ Created on Tue Feb 10 18:37:36 2026
 """
 
 import numpy as np
-import pandas as pd
 from astropy import wcs, table, time
 from astropy.stats import sigma_clipped_stats
 from astroquery.simbad import Simbad
 from photutils import psf, aperture
-from matplotlib.pyplot import close
 from timeit import default_timer
 import warnings
 
@@ -208,17 +206,47 @@ def extract_target(phot_table, main_id, plotting=False):
 def band_photometry(data, band, verbose=False, **phot_kwargs):
     phot_tables = []
     data_band = data.filter(filter=band)
+    print("\n=== band_photometry DEBUG ===")
+    print("Requested band:", repr(band))
+    print("All bands in data.unique('filter'):", data.unique("filter"))
+    print("Frames total:", len(data))
+    print("Frames in requested band:", len(data_band))
     for i, frame in enumerate(data_band):
         helper.print_statusline(f"{i+1}/{len(data_band)}")
+        frame_filter = frame.get("filter")
+        date_obs = frame.get("DATE-OBS")
+        print(f"\n--- Frame {i} ---")
+        print("path:", getattr(frame, "path", None))
+        print("frame.get('filter'):", repr(frame_filter))
+        print("frame.get('DATE-OBS'):", repr(date_obs))
+
         try:
             # use previously calculated zp if calibration failed because no detected
             # star has magnitude data in the requested band
             phot_table = aperture_photometry(frame, **phot_kwargs)
-            if phot_table is not None:
+            if phot_table is None:
+                print(f"{i}: aperture_photometry returned None\n")
+            else:
+                print(f"{i}: OK phot_table rows={len(phot_table)}\n")
                 phot_tables.append(phot_table)
+
         except Exception as e:
-            print(f"{i}: {e}\n")
+            print(f"{i}: {type(e).__name__}: {e}\n")
+            import traceback
+            traceback.print_exc()
             continue
+
+    if len(data_band) == 0:
+        raise ValueError(
+            f"No frames found for band={band!r}. Available filters: {data.unique('filter')}"
+        )
+
+    if len(phot_tables) == 0:
+        raise RuntimeError(
+            f"All frames failed for band={band!r}. "
+            "Scroll up for the per-frame error messages."
+        )
+
     phot_tables = table.vstack(phot_tables, metadata_conflicts="silent")
     phot_tables.sort(["main_id", "t"])
     return phot_tables
@@ -255,6 +283,20 @@ if __name__ == "__main__":
     
     # TODO: move this part into a function, loop over all filters
     # read data
+    print("\n=== DIRECTORY DEBUG ===")
+    print("repo_root:", repo_root)
+    print("labs[0]:", labs[0])
+    print("directory:", directory)
+    print("directory exists:", directory.exists())
+    print("Solved path:", directory / "Solved")
+    print("Solved exists:", (directory / "Solved").exists())
+    print("Solved is dir:", (directory / "Solved").is_dir())
+
+    import os
+    if (directory / "Solved").exists():
+        print("Solved content (first 20):")
+        print(sorted(os.listdir(directory / "Solved"))[:20])
+    print("=======================\n")
     data = io_data.read_folder(directory / "Solved")
     # fwhm = calc_fwhm(data.filter(filter=band))
     phot_table = band_photometry(data, band, r_in=2, r_out=3)

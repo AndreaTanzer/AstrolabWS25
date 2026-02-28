@@ -181,7 +181,17 @@ def write_solved_frame(outpath: str|Path, stars, wcs_solution):
         # create STARS extension
         stars_hdu = fits.BinTableHDU(stars, name="STARS")
         new_hdul = fits.HDUList([fits.PrimaryHDU(data=hdul[0].data, header=hdr), stars_hdu])
+        print("\n=== WRITE_SOLVED_FRAME DEBUG ===")
+        print("Input outpath:", outpath)
+        print("Resolved output_dir:", output_dir)
+        print("Final output_path:", output_path)
+        print("File exists before write:", output_path.exists())
+        print("Writing file now...")
+
         new_hdul.writeto(output_path, overwrite=True)
+
+        print("File exists after write:", output_path.exists())
+        print("================================\n")
     return
 
 def write_header_failed(outpath):

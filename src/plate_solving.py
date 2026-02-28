@@ -16,7 +16,6 @@ from astroquery.vizier import Vizier
 import astroalign as aa
 from photutils import detection, centroids
 import matplotlib.pyplot as plt
-import os
 import time
 
 import helper
@@ -217,6 +216,10 @@ class PlateSolver:
         target_pts = np.transpose((star_px_x[mask], star_px_y[mask]))  # [:max_stars]
         nsource = len(source_pts)
         ntarget = len(target_pts)
+        if ntarget == 0:
+            return None
+        print("solve_wcs: crval seed ra,dec:", self.frame.coord.ra.deg, self.frame.coord.dec.deg, flush=True)
+        print("solve_wcs: cdelt seed:", w.wcs.cdelt, flush=True)
         # check if enough detected stars and Gaia stars are available
         if nsource < 5 or ntarget < 5:
             if plotting:

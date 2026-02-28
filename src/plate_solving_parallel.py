@@ -19,6 +19,9 @@ _worker_alt_star_table = None
 def _query_reference_catalogs(data):
     print("Fetching Global Reference catalogs (Gaia & VizieR)...")
     temp_solver = PlateSolver(data[0])
+    print("DEBUG catalog seed frame:", data[0].path)
+    print("DEBUG catalog seed OBJECT:", data[0].get("OBJECT"))
+    print("DEBUG catalog seed RA,DEC deg:", data[0].coord.ra.deg, data[0].coord.dec.deg)
     for j in range(10):
         try:
             # We fetch both as you had in your HEAD
@@ -97,7 +100,7 @@ def init_worker(main_table, alt_table, verbose: bool):
     
     if not verbose:
         sys.stdout = open(os.devnull, "w")
-        sys.stderrr = open(os.devnull, "w")
+        sys.stderr = open(os.devnull, "w")
     logging.getLogger('astroquery').setLevel(logging.ERROR)
     warnings.simplefilter("ignore", category=AstropyWarning)
     return

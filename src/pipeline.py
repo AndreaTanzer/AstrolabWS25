@@ -23,6 +23,6 @@ def run_pipeline(repo_root, labname, force=False, verbose=False):
     plate_solve_all(reduced, force_solve=force, verbose=verbose)
     
     # takes ~1min
-    solved = read_folder(directory / "Solved")
+    _ = read_folder(directory / "Solved")
     # light_curves = aperture_photometry(solved, labname)
     
