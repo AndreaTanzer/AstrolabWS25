@@ -10,6 +10,7 @@ import os
 import re
 import unicodedata
 import numpy as np
+import pandas as pd
 from astropy.io import fits
 from astropy.table import Table
 from astropy.coordinates import SkyCoord
@@ -304,6 +305,32 @@ def build_force_dict(filters, force_solve):
     if isinstance(force_solve, bool):
         return {filt: force_solve for filt in filters}
     return {filt: force_solve.get(filt, False) for filt in filters}
+
+def get_common_star_ids(frames: ScienceFrameList, tol: int=0):
+    """
+    Loads all star extensions, extracts UCAC4 ids, returns ids that appear the 
+    most often. Specify tol to allow tol less occurences than the most common
+
+    Parameters
+    ----------
+    frames : ScienceFrameList
+        DESCRIPTION.
+
+    Returns
+    -------
+    common_ids : pd.Series
+        UCAC4 IDs that are most common across frames.
+
+    """
+    all_ids = []
+    for frame in frames:
+        stars = frame.load_stars()
+        all_ids.append(pd.Series(stars["UCAC4"]))
+    all_ids = pd.concat(all_ids)
+    counts = all_ids.value_counts()
+    condition = counts.loc[:] >= counts.max() - tol
+    common_ids = condition[condition].index
+    return common_ids
     
 def get_dataset(labname, kind):
     dataset = DATASETS.get(labname)

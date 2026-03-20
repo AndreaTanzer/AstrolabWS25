@@ -6,6 +6,7 @@ Created on Tue Feb 10 18:37:36 2026
 """
 
 import numpy as np
+import pandas as pd
 from astropy import wcs, table, time
 from astropy.stats import sigma_clipped_stats
 from astroquery.simbad import Simbad
@@ -62,8 +63,12 @@ def calc_zero_point(mag: table.Table, flux: table.Table, sigma: float=1.):
         plot.plot(data=[mag, mag + 2.5*np.log10(flux)], marker=["."], linestyle=["None"], 
             title="Photometric Zero Point Determination", xlabel="Catalog Magnitude", 
             ylabel="Instrumental Magnitude (m + 2.5 log10 flux)", fname = fname, showPlot=False)
-
+        
     return zp_mean
+
+def calc_zero_point_single(mag: table.Table, flux: table.Table, sigma: float=1.):
+    
+    return
 
 def calc_magnitude(flux, zp):
     with warnings.catch_warnings():
@@ -135,8 +140,7 @@ def calc_fwhm(data):
         fwhms.append(np.median(fwhm_stars))
     return np.array(fwhms)
 
-def aperture_photometry(frame, fwhm=7, r_in=4, r_out=5, 
-                        plotting=False):
+def aperture_photometry(frame, fwhm=7, r_in=4, r_out=5, star_ids: pd.Series=None):
     '''
     Perform aperture photometry on all detected stars in frame.
     Calibrate using 
@@ -151,15 +155,16 @@ def aperture_photometry(frame, fwhm=7, r_in=4, r_out=5,
 
     Returns
     -------
-    phot_table_merged : TYPE
-        DESCRIPTION.
-    zp : TYPE
+    phot_table : TYPE
         DESCRIPTION.
 
     '''
     # load data
     im = frame.load() 
     stars = frame.load_stars()
+    if star_ids is not None:
+        mask = np.isin(stars["UCAC4"], star_ids)
+        stars = stars[mask]
     band = frame.get("filter")
     # construct coordinate system and plot
     star_pos = get_star_pos(stars, frame.header)
@@ -168,6 +173,7 @@ def aperture_photometry(frame, fwhm=7, r_in=4, r_out=5,
     # plot.plot_stars(im, stars)
     # perform aperture photometry on all stars
     phot_table = compute_flux(im, star_pos["xypos"], fwhm, r_in, r_out)
+    phot_table["norm_aperture_sum"] = phot_table["aperture_sum"]/frame.get("EXPOSURE")
     phot_table["norm_flux"] = phot_table["flux"]/frame.get("EXPOSURE")
     
     for col in phot_table.itercols():
@@ -267,7 +273,7 @@ def plot_phot_norm(phot, name, band, t_roll="30min", title=None):
                   left_on=["t"], right_index=True)
     # convert name to valid filename (cant use *)
     fname = helper.slugify(f"{name}_{band}_photometry_norm")
-    plot_kwargs = [dict(data=[df["t"], df["aperture_sum"], df["norm_flux"]], title=title,
+    plot_kwargs = [dict(data=[df["t"], df["norm_aperture_sum"], df["norm_flux"]], title=title,
                         ylabel="flux", legend=["raw flux", "background subtracted, normalized"]),
                    dict(data=[df["t"], df["norm_mag"], df["mag_rolling"]],
                         ylabel="measurements/mag", linestyle=["None", "-"], marker=[".", "None"],
@@ -276,6 +282,7 @@ def plot_phot_norm(phot, name, band, t_roll="30min", title=None):
                    ]
     plot.subplots(1, 3, [plot.plot_on_ax,]*3, plot_kwargs, title=None, 
                   add_colorbar=False, figsize=(8, 4.5), fname=repo_root / "figs" / fname)
+    
 
 if __name__ == "__main__":
     starttime = default_timer()
@@ -294,8 +301,10 @@ if __name__ == "__main__":
         print(sorted(os.listdir(directory / "Solved"))[:20])
     print("=======================\n")
     data = io_data.read_folder(directory / "Solved")
-    # fwhm = calc_fwhm(data.filter(filter=band))
-    phot_table = band_photometry(data, band, r_in=2, r_out=5)
+    data_band = data.filter(filter=band)
+    # fwhm = calc_fwhm(data_band)
+    star_ids = helper.get_common_star_ids(data_band)
+    phot_table = band_photometry(data, band, r_in=2, r_out=5, star_ids=star_ids)
     phot_target = extract_target(phot_table, UCAC4)
     
     stars = data[0].load_stars()
@@ -303,11 +312,11 @@ if __name__ == "__main__":
     mag_ref = stars["Vmag"][4]
     phot_ref = extract_target(phot_table, UCAC4_ref)
     
-    plot_phot(phot_target, name, band, title="Target Star")
-    plot_phot(phot_ref, f"UCAC4 {UCAC4_ref}", band, 
+    plot_phot(phot_target, name, band+"_common", title="Target Star")
+    plot_phot(phot_ref, f"UCAC4 {UCAC4_ref}", band+"_common", 
               title=f"UCAC4 {UCAC4_ref}, V={mag_ref:.3f}mag")
-    plot_phot_norm(phot_target, name, band, title="Target Star")
-    plot_phot_norm(phot_ref, f"UCAC4 {UCAC4_ref}", band, 
+    plot_phot_norm(phot_target, name, band+"_common", title="Target Star")
+    plot_phot_norm(phot_ref, f"UCAC4 {UCAC4_ref}", band+"_common", 
               title=f"UCAC4 {UCAC4_ref}, V={mag_ref:.3f}mag")
 
     print('Execution Time: %.2f s' % (default_timer()-starttime))
