@@ -1,6 +1,6 @@
 from reduce_data import data_reduction
 from plate_solving_parallel import plate_solve_all
-# from photometry import aperture_photometry
+from photometry import gen_light_curves
 from io_data import read_folder
 from helper import functimer
 # from plate_solving import plate_solve_all
@@ -22,7 +22,7 @@ def run_pipeline(repo_root, labname, force=False, verbose=False):
     # there are too few stars (cloudy) or too many (overexposed)
     plate_solve_all(reduced, force_solve=force, verbose=verbose)
     
-    # takes ~1min
-    # solved = read_folder(directory / "Solved")
-    # light_curves = aperture_photometry(solved, labname)
-    
+    # takes ~2min
+    solved = read_folder(directory / "Solved")
+    light_curve = gen_light_curves(solved, labname)
+    return light_curve

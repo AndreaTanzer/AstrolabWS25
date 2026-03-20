@@ -58,17 +58,14 @@ def calc_zero_point(mag: table.Table, flux: table.Table, sigma: float=1.):
 
     zps = mag + 2.5*np.log10(flux)
     zp_mean, _, _ = sigma_clipped_stats(zps, sigma=sigma)
-    if calc_zero_point._call_count % 10 == 0:
-        fname = repo_root / "figs" / f"zp_debug_{calc_zero_point._call_count:03d}.png"
-        plot.plot(data=[mag, mag + 2.5*np.log10(flux)], marker=["."], linestyle=["None"], 
-            title="Photometric Zero Point Determination", xlabel="Catalog Magnitude", 
-            ylabel="Instrumental Magnitude (m + 2.5 log10 flux)", fname = fname, showPlot=False)
+    # my kernel died after ~200 plots :/
+    # if calc_zero_point._call_count % 10 == 0:
+    #     fname = repo_root / "figs" / f"zp_debug_{calc_zero_point._call_count:03d}.png"
+    #     plot.plot(data=[mag, mag + 2.5*np.log10(flux)], marker=["."], linestyle=["None"], 
+    #         title="Photometric Zero Point Determination", xlabel="Catalog Magnitude", 
+    #         ylabel="Magnitude of flux=1", fname = fname, showPlot=False)
         
     return zp_mean
-
-def calc_zero_point_single(mag: table.Table, flux: table.Table, sigma: float=1.):
-    
-    return
 
 def calc_magnitude(flux, zp):
     with warnings.catch_warnings():
@@ -77,40 +74,26 @@ def calc_magnitude(flux, zp):
         mag = zp - 2.5*np.log10(flux)
     return mag
 
-# Not that many stars with magnitude data across bands, calibration fails at times
-def query_Simbad(upload_table, band, radius_arcsec=5):
-    radius_deg = radius_arcsec/60**2  # cone search radius
-    # cone search around position with given radius
-    # obtain main_id, ra, dec, object_type, magnitude in given filter
-    query = f"""
-    SELECT
-        up.idx, up.ra AS input_ra, up.dec AS input_dec, -- input idx, ra, dec
-        b.main_id, b.ra, b.dec, b.otype, -- obtain main_id, ra, dec, object_type
-        f.filter, f.flux,  -- obtain magnitude for each filter
-        DISTANCE(POINT('ICRS', b.ra, b.dec), -- get distance from input ra, dec
-                 POINT('ICRS', up.ra, up.dec)) AS dist
-    FROM TAP_UPLOAD.targets AS up
-    -- choose objects within radius
-    JOIN basic AS b ON 1 = CONTAINS(POINT('ICRS', b.ra, b.dec), 
-                                    CIRCLE('ICRS', up.ra, up.dec, {radius_deg}))
-    JOIN flux AS f ON b.oid = f.oidref
-    WHERE f.filter = '{band}'  -- choose objects with given band
-    """
-    result = Simbad.query_tap(query, targets=upload_table)
-    if result is None:
-        return None
-    df = result.to_pandas()
-    df["dist_arcsec"] = df["dist"]*60**2
-    df.rename(columns={"flux": "mag"}, inplace=True)
-    # Choose brightest object within search radius (usually there is only 1)
-    df_brightest = df.sort_values("mag").groupby("idx").first().reset_index()
-    df_brightest['idx'] = df['idx'].astype(int)
-    return df_brightest
 
-def query_Simbad_id(upload_table, band="G", radius_arcsec=10):
-    simbad_data = query_Simbad(upload_table, band, radius_arcsec)
-    df = simbad_data[["idx", "main_id"]]
-    return df
+def get_common_stars(table):
+    # get stars visible across (almost) all frames
+    grouped_stars = table.group_by("idx")
+    group_lengths = np.diff(grouped_stars.groups.indices)
+    common_ids = grouped_stars.groups.keys[group_lengths == group_lengths.max()]
+    small_table = table[np.isin(table["idx"],  common_ids["idx"])]
+    return small_table
+
+def extract_value(table, value, index="t", column="idx"):
+    df = table.to_pandas()
+    matrix = df.pivot(index=index, columns=column, values=value)
+    return matrix
+
+def extract_target(phot_table, main_id, plotting=False):
+    phot_target = phot_table[phot_table["main_id"]==main_id]
+    if plotting is True:
+        plot.plot(data=[phot_target["t"].datetime, phot_target["mag"]],
+                  title=band, ylabel="mag", marker=".")
+    return phot_target
 
 def get_star_pos(stars, header):
     if stars is None:
@@ -142,7 +125,7 @@ def calc_fwhm(data):
 
 def aperture_photometry(frame, fwhm=7, r_in=4, r_out=5, star_ids: pd.Series=None):
     '''
-    Perform aperture photometry on all detected stars in frame.
+    Perform aperture photometry on all detected stars in a single frame.
     Calibrate using 
 
     Parameters
@@ -164,7 +147,8 @@ def aperture_photometry(frame, fwhm=7, r_in=4, r_out=5, star_ids: pd.Series=None
     stars = frame.load_stars()
     if star_ids is not None:
         mask = np.isin(stars["UCAC4"], star_ids)
-        stars = stars[mask]
+    else:
+        mask = np.ones_like(stars["UCAC4"], dtype=bool)
     band = frame.get("filter")
     # construct coordinate system and plot
     star_pos = get_star_pos(stars, frame.header)
@@ -184,8 +168,8 @@ def aperture_photometry(frame, fwhm=7, r_in=4, r_out=5, star_ids: pd.Series=None
     phot_table["dec"] = star_pos["dec"]
 
     # calibrate image
-    zp = calc_zero_point(stars[f"{band}mag"], phot_table["flux"])
-    zp_norm = calc_zero_point(stars[f"{band}mag"], phot_table["norm_flux"])
+    zp = calc_zero_point(stars[f"{band}mag"][mask], phot_table["flux"][mask])
+    zp_norm = calc_zero_point(stars[f"{band}mag"][mask], phot_table["norm_flux"][mask])
     # Calculate magnitudes from flux using zero point
     phot_table["mag"] = calc_magnitude(phot_table["flux"], zp)
     phot_table["norm_mag"] = calc_magnitude(phot_table["norm_flux"], zp_norm)
@@ -195,31 +179,10 @@ def aperture_photometry(frame, fwhm=7, r_in=4, r_out=5, star_ids: pd.Series=None
     phot_table["norm_zp"] = zp_norm
     return phot_table
 
-def get_common_stars(table):
-    # get stars visible across (almost) all frames
-    grouped_stars = table.group_by("idx")
-    group_lengths = np.diff(grouped_stars.groups.indices)
-    common_ids = grouped_stars.groups.keys[group_lengths == group_lengths.max()]
-    small_table = table[np.isin(table["idx"],  common_ids["idx"])]
-    return small_table
-
-def extract_value(table, value, index="t", column="idx"):
-    df = table.to_pandas()
-    matrix = df.pivot(index=index, columns=column, values=value)
-    return matrix
-
-def extract_target(phot_table, main_id, plotting=False):
-    phot_target = phot_table[phot_table["main_id"]==main_id]
-    if plotting is True:
-        plot.plot(data=[phot_target["t"].datetime, phot_target["mag"]],
-                  title=band, ylabel="mag", marker=".")
-    return phot_target
-
 @helper.functimer
 # @helper.profiler(n=50)
-def band_photometry(data, band, verbose=False, **phot_kwargs):
+def band_photometry(data_band, band, verbose=False, **phot_kwargs):
     phot_tables = []
-    data_band = data.filter(filter=band)
     n_total = len(data_band)
 
     for i, frame in enumerate(data_band):
@@ -249,75 +212,80 @@ def band_photometry(data, band, verbose=False, **phot_kwargs):
     phot_tables.sort(["main_id", "t"])
     return phot_tables
 
-def plot_phot(phot, name, band, t_roll="30min", title=None):
-    df = phot.to_pandas()
-    # create 5min rolling average of magnitude, save it to column mag_5m
-    df = df.merge(df.set_index("t").rolling(t_roll)["mag"].mean().rename("mag_rolling"), 
-                  left_on=["t"], right_index=True)
-    # convert name to valid filename (cant use *)
-    fname = helper.slugify(f"{name}_{band}_photometry")
-    plot_kwargs = [dict(data=[df["t"], df["aperture_sum"], df["flux"]], title=title,
-                        ylabel="flux", legend=["raw flux", "background subtracted"]),
-                   dict(data=[df["t"], df["mag"], df["mag_rolling"]],
-                        ylabel="measurements/mag", linestyle=["None", "-"], marker=[".", "None"],
-                        legend=["single measurements", f"{t_roll} running average"]),
-                   dict(data=[df["t"], df["zp"]], ylabel="zeropoints/mag")
-                   ]
-    plot.subplots(1, 3, [plot.plot_on_ax,]*3, plot_kwargs, title=None, 
-                  add_colorbar=False, figsize=(8, 4.5), fname=repo_root / "figs" / fname)
-    
-def plot_phot_norm(phot, name, band, t_roll="30min", title=None):
-    df = phot.to_pandas()
-    # create 5min rolling average of magnitude, save it to column mag_5m
-    df = df.merge(df.set_index("t").rolling(t_roll)["norm_mag"].mean().rename("mag_rolling"), 
-                  left_on=["t"], right_index=True)
-    # convert name to valid filename (cant use *)
-    fname = helper.slugify(f"{name}_{band}_photometry_norm")
-    plot_kwargs = [dict(data=[df["t"], df["norm_aperture_sum"], df["norm_flux"]], title=title,
-                        ylabel="flux", legend=["raw flux", "background subtracted, normalized"]),
-                   dict(data=[df["t"], df["norm_mag"], df["mag_rolling"]],
-                        ylabel="measurements/mag", linestyle=["None", "-"], marker=[".", "None"],
-                        legend=["single measurements", f"{t_roll} running average"]),
-                   dict(data=[df["t"], df["norm_zp"]], ylabel="zeropoints/mag")
-                   ]
-    plot.subplots(1, 3, [plot.plot_on_ax,]*3, plot_kwargs, title=None, 
-                  add_colorbar=False, figsize=(8, 4.5), fname=repo_root / "figs" / fname)
-    
+def gen_light_curves(data, labname):
+    stars = data[0].load_stars()
+    UCAC4 = helper.get_dataset(labname, "UCAC4")
+    name = helper.get_dataset(labname, "name")
+    bands = data.unique("filter")
+    calib_modes = ["single", "common", "all"]
+    light_curves = {}
+    for band in bands:
+        light_curves[band] = {}
+        data_band = data.filter(filter=band)
+        star_ids = helper.get_common_star_ids(data_band, tol=1)
+        UCAC4_ref = star_ids[2]
+        mask = np.isin(stars["UCAC4"], star_ids[2])
+        mag_ref = stars["Vmag"][mask][0]
+        for mode in calib_modes:
+            match mode:
+                case "single":
+                    phot_table = band_photometry(data_band, band, r_in=2, r_out=5, 
+                                                 star_ids=star_ids[1])
+                case "common":
+                    phot_table = band_photometry(data_band, band, r_in=2, r_out=5, 
+                                                 star_ids=star_ids)
+                case "all":
+                    phot_table = band_photometry(data_band, band, r_in=2, r_out=5)
+            phot_target = extract_target(phot_table, UCAC4)
+            phot_ref = extract_target(phot_table, UCAC4_ref)
+            plot.phot_norm(phot_target, name, band+f"_{mode}", title=name)
+            plot.phot_norm(phot_ref, f"UCAC4 {UCAC4_ref}", band+f"_{mode}", 
+                      title=f"UCAC4 {UCAC4_ref}, V={mag_ref:.3f}mag")
+            light_curves[mode] = phot_target
+    return light_curves
+
 
 if __name__ == "__main__":
     starttime = default_timer()
-    # close("all")
-    repo_root = get_repo_root()
     labs = ["20251104_lab", "20260114_lab"]
-    UCAC4 = helper.get_dataset(labs[0], "UCAC4")
-    name = helper.get_dataset(labs[0], "name")
-    band = "V"
-    directory = repo_root / "data" / labs[0]
+    repo_root = get_repo_root()
+    light_curves = []
+    for lab in labs:
+        directory = repo_root / "data" / lab
+        data = io_data.read_folder(directory / "Solved")
+        light_curve = gen_light_curves(data, lab)
+        light_curves.append(light_curve)
     
-    # TODO: move this part into a function, loop over all filters
-    # read data
-    if (directory / "Solved").exists():
-        print("Solved content (first 20):")
-        print(sorted(os.listdir(directory / "Solved"))[:20])
-    print("=======================\n")
-    data = io_data.read_folder(directory / "Solved")
-    data_band = data.filter(filter=band)
-    # fwhm = calc_fwhm(data_band)
-    star_ids = helper.get_common_star_ids(data_band)
-    phot_table = band_photometry(data, band, r_in=2, r_out=5, star_ids=star_ids)
-    phot_target = extract_target(phot_table, UCAC4)
     
-    stars = data[0].load_stars()
-    UCAC4_ref = stars["UCAC4"][4]
-    mag_ref = stars["Vmag"][4]
-    phot_ref = extract_target(phot_table, UCAC4_ref)
+    # UCAC4 = helper.get_dataset(labs[0], "UCAC4")
+    # name = helper.get_dataset(labs[0], "name")
+    # band = "V"
+    # directory = repo_root / "data" / labs[0]
     
-    plot_phot(phot_target, name, band+"_common", title="Target Star")
-    plot_phot(phot_ref, f"UCAC4 {UCAC4_ref}", band+"_common", 
-              title=f"UCAC4 {UCAC4_ref}, V={mag_ref:.3f}mag")
-    plot_phot_norm(phot_target, name, band+"_common", title="Target Star")
-    plot_phot_norm(phot_ref, f"UCAC4 {UCAC4_ref}", band+"_common", 
-              title=f"UCAC4 {UCAC4_ref}, V={mag_ref:.3f}mag")
+    # # TODO: move this part into a function, loop over all filters
+    # # read data
+    # if (directory / "Solved").exists():
+    #     print("Solved content (first 20):")
+    #     print(sorted(os.listdir(directory / "Solved"))[:20])
+    # print("=======================\n")
+    # data = io_data.read_folder(directory / "Solved")
+    # data_band = data.filter(filter=band)
+    # # fwhm = calc_fwhm(data_band)
+    # star_ids = helper.get_common_star_ids(data_band)
+    # phot_table = band_photometry(data_band, band, r_in=2, r_out=5, star_ids=star_ids[1])
+    # phot_target = extract_target(phot_table, UCAC4)
+    
+    # stars = data[0].load_stars()
+    # UCAC4_ref = stars["UCAC4"][1]
+    # mag_ref = stars["Vmag"][1]
+    # phot_ref = extract_target(phot_table, UCAC4_ref)
+    
+    # # plot_phot(phot_target, name, band+"_single", title="Target Star")
+    # # plot_phot(phot_ref, f"UCAC4 {UCAC4_ref}", band+"_single", 
+    # #           title=f"UCAC4 {UCAC4_ref}, V={mag_ref:.3f}mag")
+    # plot.phot_norm(phot_target, name, band+"_single", title="RR Lyrae")
+    # plot.phot_norm(phot_ref, f"UCAC4 {UCAC4_ref}", band+"_single", 
+    #           title=f"UCAC4 {UCAC4_ref}, V={mag_ref:.3f}mag")
 
     print('Execution Time: %.2f s' % (default_timer()-starttime))
     

@@ -12,6 +12,8 @@ import matplotlib.pyplot as plt
 import astropy.visualization as vis
 from astropy.nddata import Cutout2D
 from typing import Sequence, Any
+
+import helper
     
 def imshow_on_ax(ax, data, interval=None, pos=None, size=None, title=None,
                  #stretch=vis.AsinhStretch(a=0.05)
@@ -224,6 +226,7 @@ def plot_on_ax(ax,
                ylabel: str = None,
                legend: list[str | None] = [None] * 5, 
                fname: str = None,
+               invert_y_axis: str = False,
                # --- Advanced options ---
                # text
                text: Sequence[Any] | Sequence[Sequence[Any]] = None,
@@ -326,6 +329,7 @@ def plot_on_ax(ax,
     
     plt.xscale(scale[0])
     plt.yscale(scale[1])
+    ax.yaxis.set_inverted(invert_y_axis)
     ax.set_title(
         title, fontsize=titleSize, fontname='serif')  # 'Messung 1'
     ax.set_xlabel(
@@ -450,3 +454,43 @@ def plot_stars(im, stars, title=""):
     fig.legend()
     ax.set_title(title)
     plt.show()
+    
+def phot(phot, name, band, t_roll="30min", title=None):
+    df = phot.to_pandas()
+    # create 5min rolling average of magnitude, save it to column mag_5m
+    df = df.merge(df.set_index("t").rolling(t_roll)["mag"].mean().rename("mag_rolling"), 
+                  left_on=["t"], right_index=True)
+    # convert name to valid filename (cant use *)
+    fname = helper.slugify(f"{name}_{band}_photometry")
+    plot_kwargs = [dict(data=[df["t"], df["aperture_sum"], df["flux"]], title=title,
+                        ylabel="flux", legend=["raw flux", "background subtracted"]),
+                   dict(data=[df["t"], df["mag"], df["mag_rolling"]],
+                        invert_y_axis=True, ylabel="measurements/mag", 
+                        linestyle=["None", "-"], marker=[".", "None"],
+                        legend=["single measurements", f"{t_roll} running average"]),
+                   dict(data=[df["t"], df["zp"]], ylabel="zeropoints/mag")
+                   ]
+    repo_root = helper.get_repo_root()
+    subplots(1, 3, [plot_on_ax,]*3, plot_kwargs, title=None, 
+             add_colorbar=False, figsize=(8, 4.5), fname=repo_root / "figs" / fname)
+    
+def phot_norm(phot, name, band, t_roll="30min", title=None):
+    df = phot.to_pandas()
+    # create 5min rolling average of magnitude, save it to column mag_5m
+    df = df.merge(df.set_index("t").rolling(t_roll)["norm_mag"].mean().rename("mag_rolling"), 
+                  left_on=["t"], right_index=True)
+    # convert name to valid filename (cant use *)
+    fname = helper.slugify(f"{name}_{band}_photometry_norm")
+    plot_kwargs = [dict(data=[df["t"], df["norm_aperture_sum"], df["norm_flux"]], title=title,
+                        ylabel="flux", legend=["raw flux", "background subtracted, normalized"]),
+                   dict(data=[df["t"], df["norm_mag"], df["mag_rolling"]],
+                        invert_y_axis=True, ylabel="measurements/mag", 
+                        linestyle=["None", "-"], marker=[".", "None"], 
+                        legend=["single measurements", f"{t_roll} running average"]),
+                   dict(data=[df["t"], df["norm_zp"]], ylabel="zeropoints/mag")
+                   ]
+    repo_root = helper.get_repo_root()
+    subplots(1, 3, [plot_on_ax,]*3, plot_kwargs, title=None, 
+             add_colorbar=False, figsize=(8, 4.5), fname=repo_root / "figs" / fname)
+    
+    
