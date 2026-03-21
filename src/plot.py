@@ -494,7 +494,7 @@ def phot_norm(phot, name, band, t_roll="30min", title=None):
     subplots(1, 3, [plot_on_ax,]*3, plot_kwargs, title=None, 
              add_colorbar=False, figsize=(8, 4.5), fname=repo_root / "figs" / fname)
     
-def mosaic_plot_lc(light_curve, fname=None):
+def mosaic_plot_lc(light_curve, star_name='', fname=None):
     #with time_support():
     fig, axs = plt.subplot_mosaic([
         ['flux', 'flux', 'flux'],
@@ -506,11 +506,12 @@ def mosaic_plot_lc(light_curve, fname=None):
 
     axs['flux'].plot(t, light_curve['all']['flux'])
     axs['flux'].set_ylabel('flux')
+    axs['flux'].set_title(star_name)
     axs['flux'].tick_params(axis='x', labelrotation=90)
 
     calib_modes = ["single", "common", "all"]
     for mode in calib_modes:
-        axs[f"{mode}_m"].plot(t, light_curve[mode]['mag'])
+        axs[f"{mode}_m"].plot(t, light_curve[mode]['mag'], linestyle='', marker='.')
         axs[f"{mode}_m"].set_title(mode)
         axs[f"{mode}_m"].yaxis.set_inverted(True)
         axs[f"{mode}_m"].tick_params(axis='x', labelrotation=90)
