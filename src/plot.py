@@ -505,19 +505,21 @@ def mosaic_plot_lc(light_curve_full, band, star_name='', fname=None):
 
     t = light_curve['all']['t'].to_datetime()
 
-    axs['flux'].plot(t, light_curve['all']['flux'])
+    axs['flux'].plot(t, light_curve['all']['norm_aperture_sum'], label='norm_aperture_sum')
+    axs['flux'].plot(t, light_curve['all']['norm_flux'], label='norm_flux')
     axs['flux'].set_ylabel('flux')
     axs['flux'].set_title(f'{star_name} Filter: {band}')
+    axs['flux'].legend(loc='upper right')
     axs['flux'].tick_params(axis='x', labelrotation=90)
 
     calib_modes = ["single", "common", "all"]
     for mode in calib_modes:
-        axs[f"{mode}_m"].plot(t, light_curve[mode]['mag'])
+        axs[f"{mode}_m"].plot(t, light_curve[mode]['norm_mag'])
         axs[f"{mode}_m"].set_title(mode)
         axs[f"{mode}_m"].yaxis.set_inverted(True)
         axs[f"{mode}_m"].tick_params(axis='x', labelrotation=90)
 
-        axs[f"{mode}_zp"].plot(t, light_curve[mode]['zp'])
+        axs[f"{mode}_zp"].plot(t, light_curve[mode]['norm_zp'])
         axs[f"{mode}_zp"].set_title(mode)
         axs[f"{mode}_zp"].yaxis.set_inverted(True)
         axs[f"{mode}_zp"].tick_params(axis='x', labelrotation=90)
