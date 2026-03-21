@@ -10,6 +10,7 @@ import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import astropy.visualization as vis
+from astropy.visualization import time_support
 from astropy.nddata import Cutout2D
 from typing import Sequence, Any
 
@@ -493,4 +494,37 @@ def phot_norm(phot, name, band, t_roll="30min", title=None):
     subplots(1, 3, [plot_on_ax,]*3, plot_kwargs, title=None, 
              add_colorbar=False, figsize=(8, 4.5), fname=repo_root / "figs" / fname)
     
-    
+def mosaic_plot_lc(light_curve, fname=None):
+    #with time_support():
+    fig, axs = plt.subplot_mosaic([
+        ['flux', 'flux', 'flux'],
+        ['all_m', 'common_m', 'single_m'],
+        ['all_zp', 'common_zp', 'single_zp']
+        ], layout='constrained', figsize=[9,9])
+
+    t = light_curve['all']['t'].to_datetime()
+
+    axs['flux'].plot(t, light_curve['all']['flux'])
+    axs['flux'].set_ylabel('flux')
+    axs['flux'].tick_params(axis='x', labelrotation=90)
+
+    calib_modes = ["single", "common", "all"]
+    for mode in calib_modes:
+        axs[f"{mode}_m"].plot(t, light_curve[mode]['mag'])
+        axs[f"{mode}_m"].set_title(mode)
+        axs[f"{mode}_m"].yaxis.set_inverted(True)
+        axs[f"{mode}_m"].tick_params(axis='x', labelrotation=90)
+
+        axs[f"{mode}_zp"].plot(t, light_curve[mode]['zp'])
+        axs[f"{mode}_zp"].set_title(mode)
+        axs[f"{mode}_zp"].yaxis.set_inverted(True)
+        axs[f"{mode}_zp"].tick_params(axis='x', labelrotation=90)
+
+        axs['all_m'].set_ylabel('measurement/mag')
+        axs['all_zp'].set_ylabel('zeropoints/mag')
+
+    if fname is not None:
+        fig.savefig(fname, bbox_inches="tight")
+        print(f"Saved plot to: {fname}")
+
+    return fig, axs

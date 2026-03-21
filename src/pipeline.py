@@ -3,6 +3,8 @@ from plate_solving_parallel import plate_solve_all
 from photometry import gen_light_curves
 from io_data import read_folder
 from helper import functimer
+from plot import mosaic_plot_lc
+import helper
 # from plate_solving import plate_solve_all
 
 @functimer
@@ -25,4 +27,7 @@ def run_pipeline(repo_root, labname, force=False, verbose=False):
     # takes ~2min
     solved = read_folder(directory / "Solved")
     light_curve = gen_light_curves(solved, labname)
+
+    mosaic_plot_lc(light_curve, fname='figs/'+helper.DATASETS[labname]['name']+'_lc_full.png')
+
     return light_curve
