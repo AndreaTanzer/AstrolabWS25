@@ -17,19 +17,19 @@ def run_pipeline(repo_root, labname, force=False, verbose=False):
     # takes ~1.5min
     data_reduction(directory, plotting=False, force_reduction=force)
     reduced = read_folder(directory / "Reduced")
-    
+
     # takes ~40min if concurrent version is used vs ~10 min for parallel
     # find stars in image and get coordinates/orientation of field of view
     # Here we loose some images because they cant be plate solved. Usually because
     # there are too few stars (cloudy) or too many (overexposed)
     plate_solve_all(reduced, force_solve=force, verbose=verbose)
-    
+
     # takes ~2min
     solved = read_folder(directory / "Solved")
     light_curve = gen_light_curves(solved, labname)
 
     star_name = helper.DATASETS[labname]['name']
     for band in light_curve.keys():
-        mosaic_plot_lc(light_curve, band, star_name, fname=f'figs/{star_name}_{band}_lc_full.png')
+        mosaic_plot_lc(light_curve, band, star_name, fname=repo_root / "figs" / f'{star_name}_{band}_lc_full.png')
 
     return light_curve
