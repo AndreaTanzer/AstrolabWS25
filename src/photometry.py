@@ -241,7 +241,7 @@ def gen_light_curves(data, labname):
             plot.phot_norm(phot_target, name, band+f"_{mode}", title=name)
             plot.phot_norm(phot_ref, f"UCAC4 {UCAC4_ref}", band+f"_{mode}", 
                       title=f"UCAC4 {UCAC4_ref}, V={mag_ref:.3f}mag")
-            light_curves[mode] = phot_target
+            light_curves[band][mode] = phot_target
     return light_curves
 
 
