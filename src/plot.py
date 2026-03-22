@@ -515,20 +515,24 @@ def mosaic_plot_lc(light_curve_full, band, star_name='', fname=None):
     calib_modes = ["single", "common", "all"]
     for mode in calib_modes:
         axs[f"{mode}_m"].plot(t, light_curve[mode]['norm_mag'])
+        ylim_m = [np.max(light_curve['single']['norm_mag'])+0.01, np.min(light_curve['all']['norm_mag'])-0.01]
         axs[f"{mode}_m"].set_title(mode)
-        axs[f"{mode}_m"].yaxis.set_inverted(True)
+        # axs[f"{mode}_m"].yaxis.set_inverted(True)
+        axs[f"{mode}_m"].set_ylim(*ylim_m)
         axs[f"{mode}_m"].tick_params(axis='x', labelrotation=90)
 
         axs[f"{mode}_zp"].plot(t, light_curve[mode]['norm_zp'])
+        ylim_zp = [np.max(light_curve['all']['norm_zp'])+0.01, np.min(light_curve['all']['norm_zp'])-0.01]
         axs[f"{mode}_zp"].set_title(mode)
-        axs[f"{mode}_zp"].yaxis.set_inverted(True)
+        # axs[f"{mode}_zp"].yaxis.set_inverted(True)
+        axs[f"{mode}_zp"].set_ylim(*ylim_zp)
         axs[f"{mode}_zp"].tick_params(axis='x', labelrotation=90)
 
         axs['all_m'].set_ylabel('measurement/mag')
         axs['all_zp'].set_ylabel('zeropoints/mag')
 
     if fname is not None:
-        fig.savefig(fname, bbox_inches="tight")
+        fig.savefig(fname, dpi=200, bbox_inches="tight")
         print(f"Saved plot to: {fname}")
 
     return fig, axs
