@@ -512,17 +512,20 @@ def mosaic_plot_lc(light_curve_full, band, star_name='', fname=None):
     axs['flux'].legend(loc='upper right')
     axs['flux'].tick_params(axis='x', labelrotation=90)
 
+    full_norm_mag = np.array([light_curve['single']['norm_mag'], light_curve['common']['norm_mag'], light_curve['all']['norm_mag']])
+    full_norm_zp = np.array([light_curve['single']['norm_zp'], light_curve['common']['norm_zp'], light_curve['all']['norm_zp']])
+
     calib_modes = ["single", "common", "all"]
     for mode in calib_modes:
         axs[f"{mode}_m"].plot(t, light_curve[mode]['norm_mag'])
-        ylim_m = [np.max(light_curve['single']['norm_mag'])+0.01, np.min(light_curve['all']['norm_mag'])-0.01]
+        ylim_m = [np.max(full_norm_mag)+0.01, np.min(full_norm_mag)-0.01]
         axs[f"{mode}_m"].set_title(mode)
         # axs[f"{mode}_m"].yaxis.set_inverted(True)
         axs[f"{mode}_m"].set_ylim(*ylim_m)
         axs[f"{mode}_m"].tick_params(axis='x', labelrotation=90)
 
         axs[f"{mode}_zp"].plot(t, light_curve[mode]['norm_zp'])
-        ylim_zp = [np.max(light_curve['all']['norm_zp'])+0.01, np.min(light_curve['all']['norm_zp'])-0.01]
+        ylim_zp = [np.max(full_norm_zp)+0.01, np.min(full_norm_zp)-0.01]
         axs[f"{mode}_zp"].set_title(mode)
         # axs[f"{mode}_zp"].yaxis.set_inverted(True)
         axs[f"{mode}_zp"].set_ylim(*ylim_zp)
