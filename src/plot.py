@@ -517,7 +517,16 @@ def mosaic_plot_lc(light_curve_full, band, star_name='', fname=None):
 
     calib_modes = ["single", "common", "all"]
     for mode in calib_modes:
-        axs[f"{mode}_m"].plot(t, light_curve[mode]['norm_mag'])
+        df = light_curve[mode].to_pandas()
+        df = df.merge(df.set_index("t").rolling("60min")["mag"].mean().rename("mag_rolling"), 
+                      left_on=["t"], right_index=True)
+        # years = light_curve['all']['t'].decimalyear
+        # coeff = np.polyfit(years, light_curve[mode]['norm_mag'], 1)
+        # fit = coeff[1] + coeff[0]*years
+        
+        axs[f"{mode}_m"].plot(df["t"], df['norm_mag'], marker=".",
+                              linestyle="None")
+        axs[f"{mode}_m"].plot(df["t"], df["mag_rolling"], marker="None", linestyle="-")
         ylim_m = [np.max(full_norm_mag)+0.01, np.min(full_norm_mag)-0.01]
         axs[f"{mode}_m"].set_title(mode)
         # axs[f"{mode}_m"].yaxis.set_inverted(True)
@@ -537,5 +546,6 @@ def mosaic_plot_lc(light_curve_full, band, star_name='', fname=None):
     if fname is not None:
         fig.savefig(fname, dpi=200, bbox_inches="tight")
         print(f"Saved plot to: {fname}")
+        plt.close(fig)
 
     return fig, axs

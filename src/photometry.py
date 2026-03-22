@@ -212,7 +212,7 @@ def band_photometry(data_band, band, verbose=False, **phot_kwargs):
     phot_tables.sort(["main_id", "t"])
     return phot_tables
 
-def gen_light_curves(data, labname):
+def gen_light_curves(data, labname, plotting=True):
     stars = data[0].load_stars()
     UCAC4 = helper.get_dataset(labname, "UCAC4")
     name = helper.get_dataset(labname, "name")
@@ -245,6 +245,12 @@ def gen_light_curves(data, labname):
                       title=f"UCAC4 {UCAC4_ref}, V={mag_ref:.3f}mag")
             light_curves[band][mode] = phot_target
             light_curves_ref[band][mode] = phot_ref
+        if plotting is True:
+            for band in light_curves.keys():
+                plot.mosaic_plot_lc(light_curves, band, name, 
+                    fname=repo_root / "figs" / f'{name}_{band}_lc_full.png')
+                plot.mosaic_plot_lc(light_curves_ref, band, UCAC4_ref, 
+                    fname=repo_root / "figs" / f'UCAC4 {UCAC4_ref}_reference_{band}_lc_full.png')
     return light_curves, light_curves_ref
 
 
