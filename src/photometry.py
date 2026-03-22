@@ -219,8 +219,10 @@ def gen_light_curves(data, labname):
     bands = data.unique("filter")
     calib_modes = ["single", "common", "all"]
     light_curves = {}
+    light_curves_ref = {}
     for band in bands:
         light_curves[band] = {}
+        light_curves_ref[band] = {}
         data_band = data.filter(filter=band)
         star_ids = helper.get_common_star_ids(data_band, tol=1)
         UCAC4_ref = star_ids[2]
@@ -242,7 +244,8 @@ def gen_light_curves(data, labname):
             plot.phot_norm(phot_ref, f"UCAC4 {UCAC4_ref}", band+f"_{mode}", 
                       title=f"UCAC4 {UCAC4_ref}, V={mag_ref:.3f}mag")
             light_curves[band][mode] = phot_target
-    return light_curves
+            light_curves_ref[band][mode] = phot_ref
+    return light_curves, light_curves_ref
 
 
 if __name__ == "__main__":
