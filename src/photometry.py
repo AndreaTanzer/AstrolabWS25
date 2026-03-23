@@ -246,6 +246,7 @@ def gen_light_curves(data, labname, plotting=True):
             light_curves[band][mode] = phot_target
             light_curves_ref[band][mode] = phot_ref
         if plotting is True:
+            repo_root = get_repo_root()
             for band in light_curves.keys():
                 plot.mosaic_plot_lc(light_curves, band, name, 
                     fname=repo_root / "figs" / f'{name}_{band}_lc_full.png')
