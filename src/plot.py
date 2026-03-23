@@ -517,8 +517,9 @@ def mosaic_plot_lc(light_curve_full, band, star_name='', fname=None):
     full_norm_zp = np.array([light_curve['single']['norm_zp'], light_curve['common']['norm_zp'], light_curve['all']['norm_zp']])
 
     if (star_name == "RR Lyrae") and (band == 'V'):
-        repo_root = helper.get_repo_root()
-        rr_lyr = pd.read_csv(repo_root/'data'/'rr_lyr_model.csv', sep=',', parse_dates=['t'])
+        # repo_root = helper.get_repo_root()
+        # rr_lyr = pd.read_csv(repo_root/'data'/'rr_lyr_model.csv', sep=',', parse_dates=['t'])
+        from AAVSO_lighcurve import mag_df as rr_lyr
 
     calib_modes = ["single", "common", "all"]
     for mode in calib_modes:
@@ -547,8 +548,8 @@ def mosaic_plot_lc(light_curve_full, band, star_name='', fname=None):
         if (star_name == "RR Lyrae") and (band == 'V'):
             xlim = [df["t"].iloc[0], df["t"].iloc[-1]]
             axs[f"{mode}_m"].set_xlim(*xlim)
-            axs[f"{mode}_m"].plot(rr_lyr['t'], rr_lyr['mag_fit'], linestyle='-.', color='k', label='model')
-            axs[f"{mode}_m"].legend(loc='upper right')
+            axs[f"{mode}_m"].plot(rr_lyr['t'], rr_lyr['mag'], linestyle='-.', color='k', label='model')
+            axs[f"{mode}_m"].legend(loc='lower left')
 
 
     axs['all_m'].set_ylabel('measurement/mag')
