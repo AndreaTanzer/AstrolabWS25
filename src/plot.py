@@ -9,6 +9,7 @@ import os
 import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+import pandas as pd
 import astropy.visualization as vis
 from astropy.visualization import time_support
 from astropy.nddata import Cutout2D
@@ -515,6 +516,10 @@ def mosaic_plot_lc(light_curve_full, band, star_name='', fname=None):
     full_norm_mag = np.array([light_curve['single']['norm_mag'], light_curve['common']['norm_mag'], light_curve['all']['norm_mag']])
     full_norm_zp = np.array([light_curve['single']['norm_zp'], light_curve['common']['norm_zp'], light_curve['all']['norm_zp']])
 
+    if (star_name == "RR Lyrae") and (band == 'V'):
+        repo_root = helper.get_repo_root()
+        rr_lyr = pd.read_csv(repo_root/'data'/'rr_lyr_model.csv', sep=',', parse_dates=['t'])
+
     calib_modes = ["single", "common", "all"]
     for mode in calib_modes:
         df = light_curve[mode].to_pandas()
@@ -524,9 +529,8 @@ def mosaic_plot_lc(light_curve_full, band, star_name='', fname=None):
         # coeff = np.polyfit(years, light_curve[mode]['norm_mag'], 1)
         # fit = coeff[1] + coeff[0]*years
         
-        axs[f"{mode}_m"].plot(df["t"], df['norm_mag'], marker=".",
-                              linestyle="None")
-        axs[f"{mode}_m"].plot(df["t"], df["mag_rolling"], marker="None", linestyle="-")
+        axs[f"{mode}_m"].plot(df["t"], df['norm_mag'], marker=".", linestyle="None", label='data')
+        axs[f"{mode}_m"].plot(df["t"], df["mag_rolling"], marker="None", linestyle="-", label='rolling avg')
         ylim_m = [np.max(full_norm_mag)+0.01, np.min(full_norm_mag)-0.01]
         axs[f"{mode}_m"].set_title(mode)
         # axs[f"{mode}_m"].yaxis.set_inverted(True)
@@ -540,8 +544,15 @@ def mosaic_plot_lc(light_curve_full, band, star_name='', fname=None):
         axs[f"{mode}_zp"].set_ylim(*ylim_zp)
         axs[f"{mode}_zp"].tick_params(axis='x', labelrotation=90)
 
-        axs['all_m'].set_ylabel('measurement/mag')
-        axs['all_zp'].set_ylabel('zeropoints/mag')
+        if (star_name == "RR Lyrae") and (band == 'V'):
+            xlim = [df["t"].iloc[0], df["t"].iloc[-1]]
+            axs[f"{mode}_m"].set_xlim(*xlim)
+            axs[f"{mode}_m"].plot(rr_lyr['t'], rr_lyr['mag_fit'], linestyle='-.', color='k', label='model')
+            axs[f"{mode}_m"].legend(loc='upper right')
+
+
+    axs['all_m'].set_ylabel('measurement/mag')
+    axs['all_zp'].set_ylabel('zeropoints/mag')
 
     if fname is not None:
         fig.savefig(fname, dpi=200, bbox_inches="tight")

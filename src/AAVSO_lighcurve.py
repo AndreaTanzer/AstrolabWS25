@@ -241,18 +241,21 @@ t_axis_JD_041125 = jd2utc(t_axis_stack[inds_041125]).iso
 mean_mag_041125 = mean_mag_stack[inds_041125]
 
 dti = pd.to_datetime(t_axis_JD_041125)
-mag_df = pd.DataFrame(data={'t': dti, 'mag': mean_mag_041125})
+mag_fit = np.interp(dti, dti[np.isfinite(mean_mag_041125)], mean_mag_041125[np.isfinite(mean_mag_041125)])
+mag_df = pd.DataFrame(data={'t': dti, 'mag': mean_mag_041125, 'mag_fit': mag_fit})
 mag_df.to_csv(repo_root/'data/rr_lyr_model.csv')
 
 # fifth plot: light curve of 4.11.2025
 fig_lightcurve = plt.figure(figsize=(12,8))
 #plt.plot(t_axis_JD_041125, mean_mag_041125, 'r')
-plt.plot(mag_df['t'], mag_df['mag'], 'r')
+plt.plot(mag_df['t'], mag_df['mag'], 'r', label='mean')
+plt.plot(mag_df['t'], mag_df['mag_fit'], 'k-.', label='fit')
 plt.gca().invert_yaxis()
 locator = mdates.AutoDateLocator()
 formatter = mdates.ConciseDateFormatter(locator)
 plt.gca().xaxis.set_major_locator(locator)
 plt.gca().xaxis.set_major_formatter(formatter)
+plt.legend()
 
 plt.title('Synthetic Light Curve of RR Lyr of 4.11.2025 Filter: V')
 plt.xlabel('time')
