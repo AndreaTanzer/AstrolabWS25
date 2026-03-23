@@ -28,9 +28,4 @@ def run_pipeline(repo_root, labname, force=False, verbose=False):
     solved = read_folder(directory / "Solved")
     light_curve, light_curve_ref = gen_light_curves(solved, labname)
 
-    star_name = helper.DATASETS[labname]['name']
-    for band in light_curve.keys():
-        mosaic_plot_lc(light_curve, band, star_name, fname=repo_root / "figs" / f'{star_name}_{band}_lc_full.png')
-        mosaic_plot_lc(light_curve_ref, band, star_name+' reference', fname=repo_root / "figs" / f'{star_name}_reference_{band}_lc_full.png')
-
     return light_curve

@@ -250,7 +250,7 @@ def gen_light_curves(data, labname, plotting=True):
             for band in light_curves.keys():
                 plot.mosaic_plot_lc(light_curves, band, name, 
                     fname=repo_root / "figs" / f'{name}_{band}_lc_full.png')
-                plot.mosaic_plot_lc(light_curves_ref, band, UCAC4_ref, 
+                plot.mosaic_plot_lc(light_curves_ref, band, 'UCAC4 '+UCAC4_ref,
                     fname=repo_root / "figs" / f'UCAC4 {UCAC4_ref}_reference_{band}_lc_full.png')
     return light_curves, light_curves_ref
 
